@@ -34,6 +34,7 @@ function BacktestInner() {
   const [computedIndicators, setComputedIndicators] = useState({})
 
   const tf = TIMEFRAMES.find(t => t.value === timeframe) || TIMEFRAMES[5]
+  const isIntraday = ['1m', '5m', '15m', '60m', '4h'].includes(timeframe)
 
   useEffect(() => {
     const strats = getStrategies()
@@ -50,6 +51,13 @@ function BacktestInner() {
       if (s) { setSelectedStrategy(s); setMarket(s.market || 'indian') }
     }
   }, [selectedStrategyId, strategies])
+
+  // Auto-clamp range when switching to intraday timeframe
+  useEffect(() => {
+    if (['1m'].includes(timeframe)) setRange('3mo')
+    else if (['5m'].includes(timeframe)) setRange('3mo')
+    else if (['15m', '60m', '4h'].includes(timeframe)) setRange('3mo')
+  }, [timeframe])
 
   const fetchHistory = useCallback(async () => {
     if (!symbol) return
@@ -193,14 +201,20 @@ function BacktestInner() {
           {/* Date range */}
           <div>
             <label className="text-xs text-muted font-mono block mb-1.5">Historical Range</label>
-            <div className="flex gap-1">
-              {RANGES.map(r => (
-                <button key={r.value} onClick={() => setRange(r.value)}
-                  className={`flex-1 py-1.5 rounded text-xs font-mono transition-all ${range === r.value ? 'bg-accent text-bg font-bold' : 'bg-surface2 border border-border text-muted hover:text-textprimary'}`}>
-                  {r.label}
-                </button>
-              ))}
-            </div>
+            {isIntraday ? (
+              <span className="text-xs text-warning font-mono px-3 py-1.5 bg-warning/10 border border-warning/20 rounded-lg inline-block">
+                ⚡ Intraday: max 7–60 days of data
+              </span>
+            ) : (
+              <div className="flex gap-1">
+                {RANGES.map(r => (
+                  <button key={r.value} onClick={() => setRange(r.value)}
+                    className={`flex-1 py-1.5 rounded text-xs font-mono transition-all ${range === r.value ? 'bg-accent text-bg font-bold' : 'bg-surface2 border border-border text-muted hover:text-textprimary'}`}>
+                    {r.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Capital */}
@@ -275,18 +289,48 @@ function BacktestInner() {
       )}
 
       {/* Chart preview */}
-      {candles.length > 0 && (
+      {(loading || candles.length > 0) && (
         <div className="space-y-2">
           <h2 className="text-sm font-display font-semibold text-textprimary">
             Chart Preview {result ? '· with Trade Signals' : ''}
           </h2>
-          <TradingChart
-            candles={candles}
-            indicators={computedIndicators}
-            indicatorDefs={selectedStrategy?.indicators || []}
-            overlays={tradeOverlays}
-            height={380}
-          />
+          {loading ? (
+            <div className="chart-container relative overflow-hidden" style={{ height: 380 }}>
+              {/* Skeleton candles */}
+              <div className="absolute inset-0 flex items-end gap-1 px-4 pb-8 opacity-20">
+                {Array.from({ length: 60 }).map((_, i) => {
+                  const h = 30 + Math.sin(i * 0.4) * 25 + Math.random() * 40
+                  const isUp = Math.random() > 0.45
+                  return (
+                    <div key={i} className="flex-1 flex flex-col items-center gap-0.5">
+                      <div className="w-px animate-pulse" style={{ height: h * 0.3, background: isUp ? '#00E5A0' : '#FF4560', opacity: 0.4 }} />
+                      <div className="w-full rounded-sm animate-pulse" style={{ height: h, background: isUp ? '#00E5A0' : '#FF4560', opacity: 0.15, animationDelay: `${i * 30}ms` }} />
+                    </div>
+                  )
+                })}
+              </div>
+              {/* Overlay text */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+                <div className="flex items-center gap-3 text-sm font-mono text-muted">
+                  <div className="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+                  Fetching candles for {symbol.replace('.NS', '').replace('.BO', '')}...
+                </div>
+                <div className="flex gap-1">
+                  {[0, 1, 2].map(i => (
+                    <div key={i} className="w-1.5 h-1.5 rounded-full bg-accent animate-bounce" style={{ animationDelay: `${i * 150}ms` }} />
+                  ))}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <TradingChart
+              candles={candles}
+              indicators={computedIndicators}
+              indicatorDefs={selectedStrategy?.indicators || []}
+              overlays={tradeOverlays}
+              height={380}
+            />
+          )}
         </div>
       )}
 

@@ -33,6 +33,7 @@ function ChartsInner() {
   const [error, setError] = useState(null)
 
   const tf = TIMEFRAMES.find(t => t.value === timeframe) || TIMEFRAMES[5]
+  const isIntraday = ['1m', '5m', '15m', '60m', '4h'].includes(timeframe)
 
   const fetchChart = useCallback(async () => {
     if (!symbol) return
@@ -177,6 +178,12 @@ function ChartsInner() {
           ))}
         </div>
 
+        {isIntraday && (
+          <span className="text-xs text-warning font-mono px-3 py-1.5 bg-warning/10 border border-warning/20 rounded-lg">
+            ⚡ Intraday: max 7–60 days of data
+          </span>
+        )}
+
         <button onClick={fetchChart} className="p-2 text-muted hover:text-accent transition-colors" title="Refresh">
           <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
         </button>
@@ -206,10 +213,31 @@ function ChartsInner() {
             </div>
           )}
           {loading ? (
-            <div className="chart-container flex items-center justify-center" style={{ height: 480 }}>
-              <div className="flex items-center gap-3 text-muted font-mono text-sm">
-                <div className="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin" />
-                Loading chart data...
+            <div className="chart-container relative overflow-hidden" style={{ height: 480 }}>
+              {/* Skeleton candles */}
+              <div className="absolute inset-0 flex items-end gap-1 px-4 pb-8 opacity-20">
+                {Array.from({ length: 60 }).map((_, i) => {
+                  const h = 30 + Math.sin(i * 0.4) * 25 + Math.random() * 40
+                  const isUp = Math.random() > 0.45
+                  return (
+                    <div key={i} className="flex-1 flex flex-col items-center gap-0.5">
+                      <div className="w-px animate-pulse" style={{ height: h * 0.3, background: isUp ? '#00E5A0' : '#FF4560', opacity: 0.4 }} />
+                      <div className="w-full rounded-sm animate-pulse" style={{ height: h, background: isUp ? '#00E5A0' : '#FF4560', opacity: 0.15, animationDelay: `${i * 30}ms` }} />
+                    </div>
+                  )
+                })}
+              </div>
+              {/* Overlay text */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
+                <div className="flex items-center gap-3 text-sm font-mono text-muted">
+                  <div className="w-4 h-4 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+                  Fetching candles for {symbol.replace('.NS', '').replace('.BO', '')}...
+                </div>
+                <div className="flex gap-1">
+                  {[0, 1, 2].map(i => (
+                    <div key={i} className="w-1.5 h-1.5 rounded-full bg-accent animate-bounce" style={{ animationDelay: `${i * 150}ms` }} />
+                  ))}
+                </div>
               </div>
             </div>
           ) : (

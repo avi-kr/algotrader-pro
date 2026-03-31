@@ -50,7 +50,18 @@ export async function GET(request) {
       return NextResponse.json({ symbol, interval, range, candles, meta: { currency: 'INR' } })
     }
 
-    const period1 = rangeToPeriod1(range).toISOString().split('T')[0]  // "YYYY-MM-DD"
+    // Intraday intervals have Yahoo-imposed max lookback limits
+    const intradayIntervals = ['1m', '5m', '15m', '60m', '4h']
+    let period1Date
+    if (intradayIntervals.includes(interval)) {
+      const maxDays = { '1m': 7, '5m': 30, '15m': 60, '60m': 60, '4h': 60 }
+      const days = maxDays[interval] || 60
+      period1Date = new Date()
+      period1Date.setDate(period1Date.getDate() - days)
+    } else {
+      period1Date = rangeToPeriod1(range)
+    }
+    const period1 = period1Date.toISOString().split('T')[0]  // "YYYY-MM-DD"
     const yfInterval = mapInterval(interval)
 
     const result = await yf.chart(symbol, { interval: yfInterval, period1 })
