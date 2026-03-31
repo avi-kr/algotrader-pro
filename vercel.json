@@ -2,5 +2,10 @@
   "buildCommand": "npm run build",
   "outputDirectory": ".next",
   "framework": "nextjs",
-  "regions": ["bom1"]
+  "regions": ["bom1"],
+  "functions": {
+    "app/api/**": {
+      "runtime": "nodejs22.x"
+    }
+  }
 }

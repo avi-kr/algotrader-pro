@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
-import yahooFinance from 'yahoo-finance2'
+import YahooFinance from 'yahoo-finance2'
 
-export const runtime = 'nodejs'
+const yf = new YahooFinance({ suppressNotices: ['yahooSurvey', 'ripHistorical'] })
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url)
@@ -28,7 +28,7 @@ async function getStockHistory(symbol, interval, range) {
   // yahoo-finance2 chart interval: 4h not supported, map to 60m
   const yfInterval = interval === '4h' ? '60m' : interval
 
-  const result = await yahooFinance.chart(symbol, {
+  const result = await yf.chart(symbol, {
     interval: yfInterval,
     range,
     includePrePost: false,

@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
-import yahooFinance from 'yahoo-finance2'
+import YahooFinance from 'yahoo-finance2'
 
-export const runtime = 'nodejs'
+const yf = new YahooFinance({ suppressNotices: ['yahooSurvey', 'ripHistorical'] })
+
 export const revalidate = 30
 
 export async function GET(request) {
@@ -28,7 +29,7 @@ async function getStockQuotes(symbolsParam, type) {
   const symbolList = (symbolsParam || defaultSymbols).split(',').map(s => s.trim()).filter(Boolean)
 
   const results = await Promise.allSettled(
-    symbolList.map(sym => yahooFinance.quote(sym))
+    symbolList.map(sym => yf.quote(sym))
   )
 
   const formatted = results

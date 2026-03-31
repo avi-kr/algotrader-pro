@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
-import yahooFinance from 'yahoo-finance2'
+import YahooFinance from 'yahoo-finance2'
 
-export const runtime = 'nodejs'
+const yf = new YahooFinance({ suppressNotices: ['yahooSurvey', 'ripHistorical'] })
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url)
@@ -12,7 +12,7 @@ export async function GET(request) {
   }
 
   try {
-    const data = await yahooFinance.search(q, {
+    const data = await yf.search(q, {
       quotesCount: 10,
       newsCount: 0,
     })
