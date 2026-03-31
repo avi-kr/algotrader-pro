@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
+import yahooFinance from 'yahoo-finance2'
 
-export const runtime = 'edge'
+export const runtime = 'nodejs'
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url)
@@ -11,18 +12,11 @@ export async function GET(request) {
   }
 
   try {
-    const url = `https://query2.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(q)}&quotesCount=10&newsCount=0&listsCount=0&enableFuzzyQuery=true&enableNavLinks=false&enableEnhancedTrivialQuery=true&enableResearchReports=false&enableCb=true&recommendCount=0&enableSaving=false`
-
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-        'Accept': 'application/json',
-      }
+    const data = await yahooFinance.search(q, {
+      quotesCount: 10,
+      newsCount: 0,
     })
 
-    if (!response.ok) throw new Error('Search failed')
-
-    const data = await response.json()
     const quotes = data?.quotes || []
 
     const results = quotes
@@ -33,8 +27,8 @@ export async function GET(request) {
         name: q.shortname || q.longname || q.symbol,
         exchange: q.exchange,
         type: q.quoteType,
-        market: q.quoteType === 'CRYPTOCURRENCY' ? 'crypto' : 
-                (q.exchange === 'NSE' || q.exchange === 'BSE') ? 'indian' : 'us',
+        market: q.quoteType === 'CRYPTOCURRENCY' ? 'crypto'
+              : (q.exchange === 'NSE' || q.exchange === 'BSE') ? 'indian' : 'us',
       }))
 
     return NextResponse.json({ results })

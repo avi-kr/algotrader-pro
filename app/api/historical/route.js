@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
+import yahooFinance from 'yahoo-finance2'
 
-export const runtime = 'edge'
+export const runtime = 'nodejs'
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url)
@@ -24,46 +25,27 @@ export async function GET(request) {
 }
 
 async function getStockHistory(symbol, interval, range) {
-  // Map interval
+  // yahoo-finance2 chart interval: 4h not supported, map to 60m
   const yfInterval = interval === '4h' ? '60m' : interval
 
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=${yfInterval}&range=${range}&includePrePost=false&events=div%2Csplit`
-
-  const response = await fetch(url, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-      'Accept': 'application/json',
-    },
-    next: { revalidate: 300 }
+  const result = await yahooFinance.chart(symbol, {
+    interval: yfInterval,
+    range,
+    includePrePost: false,
   })
 
-  if (!response.ok) {
-    throw new Error(`Yahoo Finance chart error: ${response.status}`)
-  }
+  const quotes = result?.quotes || []
 
-  const data = await response.json()
-  const result = data?.chart?.result?.[0]
-
-  if (!result) {
-    throw new Error('No data returned for symbol: ' + symbol)
-  }
-
-  const timestamps = result.timestamp || []
-  const ohlcv = result.indicators?.quote?.[0] || {}
-  const { open = [], high = [], low = [], close = [], volume = [] } = ohlcv
-
-  const candles = []
-  for (let i = 0; i < timestamps.length; i++) {
-    if (close[i] == null) continue
-    candles.push({
-      time: timestamps[i],
-      open: open[i] || close[i],
-      high: high[i] || close[i],
-      low: low[i] || close[i],
-      close: close[i],
-      volume: volume[i] || 0,
-    })
-  }
+  const candles = quotes
+    .filter(q => q.close != null)
+    .map(q => ({
+      time: Math.floor(new Date(q.date).getTime() / 1000),
+      open: q.open || q.close,
+      high: q.high || q.close,
+      low: q.low || q.close,
+      close: q.close,
+      volume: q.volume || 0,
+    }))
 
   return NextResponse.json({
     symbol,
@@ -71,20 +53,18 @@ async function getStockHistory(symbol, interval, range) {
     range,
     candles,
     meta: {
-      currency: result.meta?.currency || 'INR',
-      exchangeName: result.meta?.exchangeName,
-      regularMarketPrice: result.meta?.regularMarketPrice,
+      currency: result?.meta?.currency || 'INR',
+      exchangeName: result?.meta?.exchangeName,
+      regularMarketPrice: result?.meta?.regularMarketPrice,
     }
   })
 }
 
 async function getCryptoHistory(coinId, interval, range) {
-  // CoinGecko uses days
   const daysMap = {
     '1d': '365', '1wk': 'max', '60m': '90', '15m': '30', '5m': '7', '1m': '1'
   }
   const days = daysMap[interval] || '365'
-  const cgInterval = interval === '1d' || interval === '1wk' ? 'daily' : 'hourly'
 
   const url = `https://api.coingecko.com/api/v3/coins/${coinId}/ohlc?vs_currency=inr&days=${days}`
 

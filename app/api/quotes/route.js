@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server'
+import yahooFinance from 'yahoo-finance2'
 
-export const runtime = 'edge'
-export const revalidate = 30  // 30s cache
+export const runtime = 'nodejs'
+export const revalidate = 30
 
 export async function GET(request) {
   const { searchParams } = new URL(request.url)
@@ -21,43 +22,36 @@ export async function GET(request) {
 
 async function getStockQuotes(symbolsParam, type) {
   const defaultSymbols = type === 'indian'
-    ? 'RELIANCE.NS,TCS.NS,HDFCBANK.NS,INFY.NS,HINDUNILVR.NS,ICICIBANK.NS,KOTAKBANK.NS,SBIN.NS,BHARTIARTL.NS,ITC.NS,AXISBANK.NS,LT.NS,ASIANPAINT.NS,MARUTI.NS,BAJFINANCE.NS,SUNPHARMA.NS,TITAN.NS,WIPRO.NS,ULTRACEMCO.NS,TECHM.NS,BAJAJFINSV.NS,HCLTECH.NS,NESTLEIND.NS,POWERGRID.NS,NTPC.NS,TATAMOTORS.NS,HDFCLIFE.NS,SBILIFE.NS,GRASIM.NS,BPCL.NS,DIVISLAB.NS,CIPLA.NS,EICHERMOT.NS,ONGC.NS,TATACONSUM.NS,HEROMOTOCO.NS,DRREDDY.NS,ADANIPORTS.NS,JSWSTEEL.NS,COALINDIA.NS,BRITANNIA.NS,HINDALCO.NS,INDUSINDBK.NS,APOLLOHOSP.NS,UPL.NS,SHRIRAMFIN.NS,BAJAJ-AUTO.NS,TRENT.NS,M%26M.NS,TATASTEEL.NS'
+    ? 'RELIANCE.NS,TCS.NS,HDFCBANK.NS,INFY.NS,HINDUNILVR.NS,ICICIBANK.NS,KOTAKBANK.NS,SBIN.NS,BHARTIARTL.NS,ITC.NS,AXISBANK.NS,LT.NS,ASIANPAINT.NS,MARUTI.NS,BAJFINANCE.NS,SUNPHARMA.NS,TITAN.NS,WIPRO.NS,ULTRACEMCO.NS,TECHM.NS,BAJAJFINSV.NS,HCLTECH.NS,NESTLEIND.NS,POWERGRID.NS,NTPC.NS,TATAMOTORS.NS,HDFCLIFE.NS,SBILIFE.NS,GRASIM.NS,BPCL.NS,DIVISLAB.NS,CIPLA.NS,EICHERMOT.NS,ONGC.NS,TATACONSUM.NS,HEROMOTOCO.NS,DRREDDY.NS,ADANIPORTS.NS,JSWSTEEL.NS,COALINDIA.NS,BRITANNIA.NS,HINDALCO.NS,INDUSINDBK.NS,APOLLOHOSP.NS,UPL.NS,SHRIRAMFIN.NS,BAJAJ-AUTO.NS,TRENT.NS,M&M.NS,TATASTEEL.NS'
     : symbolsParam || 'AAPL,MSFT,GOOGL,AMZN,NVDA,META,TSLA,NFLX,AMD,INTC'
 
-  const symbols = symbolsParam || defaultSymbols
+  const symbolList = (symbolsParam || defaultSymbols).split(',').map(s => s.trim()).filter(Boolean)
 
-  const url = `https://query1.finance.yahoo.com/v7/finance/quote?symbols=${symbols}&fields=regularMarketPrice,regularMarketChange,regularMarketChangePercent,regularMarketOpen,regularMarketDayHigh,regularMarketDayLow,regularMarketVolume,marketCap,regularMarketPreviousClose,shortName,longName`
+  const results = await Promise.allSettled(
+    symbolList.map(sym => yahooFinance.quote(sym))
+  )
 
-  const response = await fetch(url, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-      'Accept': 'application/json',
-    },
-    next: { revalidate: 30 }
-  })
-
-  if (!response.ok) {
-    throw new Error(`Yahoo Finance error: ${response.status}`)
-  }
-
-  const data = await response.json()
-  const quotes = data?.quoteResponse?.result || []
-
-  const formatted = quotes.map(q => ({
-    symbol: q.symbol,
-    name: q.shortName || q.longName || q.symbol,
-    price: q.regularMarketPrice ?? 0,
-    change: q.regularMarketChange ?? 0,
-    changePct: q.regularMarketChangePercent ?? 0,
-    open: q.regularMarketOpen ?? 0,
-    high: q.regularMarketDayHigh ?? 0,
-    low: q.regularMarketDayLow ?? 0,
-    volume: q.regularMarketVolume ?? 0,
-    prevClose: q.regularMarketPreviousClose ?? 0,
-    marketCap: q.marketCap ?? 0,
-    currency: q.currency || 'INR',
-    market: type,
-  }))
+  const formatted = results
+    .map((r, i) => {
+      if (r.status === 'rejected') return null
+      const q = r.value
+      return {
+        symbol: q.symbol,
+        name: q.shortName || q.longName || q.symbol,
+        price: q.regularMarketPrice ?? 0,
+        change: q.regularMarketChange ?? 0,
+        changePct: q.regularMarketChangePercent ?? 0,
+        open: q.regularMarketOpen ?? 0,
+        high: q.regularMarketDayHigh ?? 0,
+        low: q.regularMarketDayLow ?? 0,
+        volume: q.regularMarketVolume ?? 0,
+        prevClose: q.regularMarketPreviousClose ?? 0,
+        marketCap: q.marketCap ?? 0,
+        currency: q.currency || 'INR',
+        market: type,
+      }
+    })
+    .filter(Boolean)
 
   return NextResponse.json({ quotes: formatted, updatedAt: Date.now() })
 }
