@@ -7,8 +7,8 @@
     "engine"
   ],
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "npm run generate --workspace=@algotrader/db && next dev",
+    "build": "npm run generate --workspace=@algotrader/db && next build",
     "start": "next start",
     "lint": "next lint",
     "test": "npm run test --workspaces --if-present",
