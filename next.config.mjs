@@ -1,5 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Workspace packages ship TypeScript source directly (no separate build
+  // step) — Next.js needs to transpile them itself.
+  transpilePackages: ['@algotrader/shared-types', '@algotrader/strategy-kernel', '@algotrader/db'],
   async headers() {
     return [
       {

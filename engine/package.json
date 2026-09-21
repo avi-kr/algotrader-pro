@@ -1,0 +1,21 @@
+{
+  "name": "@algotrader/engine",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@algotrader/db": "*",
+    "@algotrader/shared-types": "*",
+    "@algotrader/strategy-kernel": "*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.5.4",
+    "typescript": "^5.5.4",
+    "vitest": "^2.1.1"
+  }
+}

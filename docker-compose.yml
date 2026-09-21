@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: algotrader
+      POSTGRES_PASSWORD: algotrader
+      POSTGRES_DB: algotrader
+    ports:
+      - '5432:5432'
+    volumes:
+      - algotrader_pg_data:/var/lib/postgresql/data
+
+volumes:
+  algotrader_pg_data:

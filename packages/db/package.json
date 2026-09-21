@@ -1,0 +1,21 @@
+{
+  "name": "@algotrader/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "migrate": "prisma migrate dev --schema=./prisma/schema.prisma",
+    "generate": "prisma generate --schema=./prisma/schema.prisma"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.19.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.5.4",
+    "prisma": "^5.19.1",
+    "typescript": "^5.5.4"
+  }
+}

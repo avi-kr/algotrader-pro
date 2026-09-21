@@ -1,0 +1,145 @@
+// AlgoTrader Pro — persistence layer.
+//
+// AuditEvent is append-only by convention: application code (see
+// engine/src/audit) only ever calls `create`, never `update` or `delete` on
+// it. Enforcing that at the database level (e.g. revoking UPDATE/DELETE
+// grants for the app's Postgres role on this table) is a follow-up documented
+// in docs/ARCHITECTURE.md — this schema captures the shape, not the grants.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TradeMode {
+  backtest
+  paper
+  live
+}
+
+enum AssetClass {
+  us_equity
+  crypto
+}
+
+model Strategy {
+  id              String   @id @default(cuid())
+  name            String
+  description     String?
+  assetClass      AssetClass @default(us_equity)
+  config          Json     // full StrategyConfig (indicators, conditions, risk) — validated against
+                            // packages/shared-types StrategyConfigSchema before it ever reaches here
+  tradeDirection  String   @default("both")
+  positionSizePct Float    @default(10)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  backtestRuns BacktestRun[]
+  orders       Order[]
+  positions    Position[]
+
+  @@map("strategies")
+}
+
+model Candle {
+  id        String   @id @default(cuid())
+  symbol    String
+  timeframe String
+  time      Int      // unix epoch seconds
+  open      Float
+  high      Float
+  low       Float
+  close     Float
+  volume    Float    @default(0)
+
+  @@unique([symbol, timeframe, time])
+  @@index([symbol, timeframe])
+  @@map("candles")
+}
+
+model BacktestRun {
+  id          String   @id @default(cuid())
+  strategyId  String
+  strategy    Strategy @relation(fields: [strategyId], references: [id], onDelete: Cascade)
+  symbol      String
+  timeframe   String
+  fromTime    Int
+  toTime      Int
+  capital     Float
+  metrics     Json     // BacktestMetrics
+  trades      Json     // Trade[]
+  equityCurve Json     // EquityPoint[]
+  createdAt   DateTime @default(now())
+
+  @@index([strategyId])
+  @@map("backtest_runs")
+}
+
+model Order {
+  id             String    @id @default(cuid())
+  clientOrderId  String    @unique // idempotency key — platform-engineer.md rule #3
+  strategyId     String
+  strategy       Strategy  @relation(fields: [strategyId], references: [id], onDelete: Cascade)
+  mode           TradeMode
+  symbol         String
+  side           String    // buy | sell
+  qty            Float
+  type           String    // market | limit
+  limitPrice     Float?
+  status         String    @default("new")
+  brokerOrderId  String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  fills Fill[]
+
+  @@index([strategyId, mode])
+  @@map("orders")
+}
+
+model Fill {
+  id         String   @id @default(cuid())
+  orderId    String
+  order      Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  price      Float
+  qty        Float
+  commission Float    @default(0)
+  filledAt   DateTime @default(now())
+
+  @@index([orderId])
+  @@map("fills")
+}
+
+model Position {
+  id            String    @id @default(cuid())
+  strategyId    String
+  strategy      Strategy  @relation(fields: [strategyId], references: [id], onDelete: Cascade)
+  mode          TradeMode
+  symbol        String
+  qty           Float
+  avgEntryPrice Float
+  side          String    // long | short | flat
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([strategyId, mode, symbol])
+  @@map("positions")
+}
+
+// Append-only. See file header — no update/delete from application code.
+model AuditEvent {
+  id         String    @id @default(cuid())
+  type       String    // AuditEventType from packages/shared-types
+  mode       TradeMode
+  strategyId String?
+  symbol     String?
+  payload    Json
+  createdAt  DateTime  @default(now())
+
+  @@index([strategyId, mode])
+  @@index([type])
+  @@map("audit_events")
+}

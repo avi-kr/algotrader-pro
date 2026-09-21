@@ -2,13 +2,24 @@
   "name": "trading-app",
   "version": "0.1.0",
   "private": true,
+  "workspaces": [
+    "packages/*",
+    "engine"
+  ],
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
+    "dev": "npm run generate --workspace=@algotrader/db && next dev",
+    "build": "npm run generate --workspace=@algotrader/db && next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "db:up": "docker compose up -d",
+    "db:migrate": "npm run migrate --workspace=@algotrader/db"
   },
   "dependencies": {
+    "@algotrader/db": "*",
+    "@algotrader/shared-types": "*",
+    "@algotrader/strategy-kernel": "*",
     "clsx": "^2.1.1",
     "framer-motion": "^11.3.0",
     "lightweight-charts": "^4.2.0",
