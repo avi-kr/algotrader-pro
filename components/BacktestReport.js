@@ -136,7 +136,7 @@ export default function BacktestReport({ result, symbol, strategy }) {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <MetricCard label="Net P&L" value={`${isProfit ? '+' : ''}₹${fmt(m.netPnl)}`} sub={fmtPct(m.netPnlPct)} color={isProfit ? 'text-accent' : 'text-danger'} />
             <MetricCard label="Win Rate" value={fmtPct(m.winRate)} sub={`${m.winningTrades}W / ${m.losingTrades}L`} color={m.winRate >= 50 ? 'text-accent' : 'text-danger'} topic="winrate" />
-            <MetricCard label="Profit Factor" value={isFinite(m.profitFactor) ? fmt(m.profitFactor) : '∞'} sub={`Gross: ₹${fmt(m.grossProfit)}`} color={m.profitFactor >= 1.5 ? 'text-accent' : 'text-danger'} topic="profitfactor" />
+            <MetricCard label="Profit Factor" value={m.profitFactor != null && isFinite(m.profitFactor) ? fmt(m.profitFactor) : '∞'} sub={`Gross: ₹${fmt(m.grossProfit)}`} color={m.profitFactor == null || m.profitFactor >= 1.5 ? 'text-accent' : 'text-danger'} topic="profitfactor" />
             <MetricCard label="Max Drawdown" value={fmtPct(-m.maxDrawdownPct)} sub={`₹${fmt(m.maxDrawdown)}`} color="text-danger" topic="drawdown" />
           </div>
 

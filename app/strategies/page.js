@@ -19,8 +19,8 @@ function StrategyCard({ strategy, onEdit, onDelete, onDuplicate, onBacktest }) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="font-display font-bold text-base text-textprimary">{strategy.name}</h3>
-            <span className={`badge ${strategy.market === 'indian' ? 'badge-green' : strategy.market === 'crypto' ? 'badge-yellow' : 'badge-blue'}`}>
-              {strategy.market === 'indian' ? 'NSE' : strategy.market === 'crypto' ? 'Crypto' : 'US'}
+            <span className={`badge ${strategy.assetClass === 'crypto' ? 'badge-yellow' : 'badge-blue'}`}>
+              {strategy.assetClass === 'crypto' ? 'Crypto' : 'US'}
             </span>
             <span className="badge badge-blue">{strategy.tradeDirection === 'both' ? 'L+S' : strategy.tradeDirection === 'long_only' ? 'Long' : 'Short'}</span>
           </div>
@@ -83,7 +83,7 @@ function StrategyCard({ strategy, onEdit, onDelete, onDuplicate, onBacktest }) {
       <div className="flex gap-3 text-xs font-mono text-muted">
         <span>🛡 SL: {strategy.stopLoss?.type?.replace(/_/g, ' ') || 'none'}</span>
         <span>🎯 TP: {strategy.takeProfit?.type?.replace(/_/g, ' ') || 'none'}</span>
-        <span>📊 {strategy.positionSize || 10}% size</span>
+        <span>📊 {strategy.positionSizePct || 10}% size</span>
       </div>
 
       {/* Actions */}
@@ -152,14 +152,18 @@ export default function StrategiesPage() {
   const [editingStrategy, setEditingStrategy] = useState(null)
   const [search, setSearch] = useState('')
 
+  const [error, setError] = useState(null)
+
+  const refresh = async () => setStrategies(await getStrategies())
+
   useEffect(() => {
-    setStrategies(getStrategies())
+    refresh()
   }, [])
 
   const handleNew = () => {
     setEditingStrategy({
       ...DEFAULT_STRATEGY,
-      id: crypto.randomUUID(),
+      id: undefined,
       createdAt: null,
       updatedAt: null,
     })
@@ -171,21 +175,26 @@ export default function StrategiesPage() {
     setModalOpen(true)
   }
 
-  const handleSave = (strategy) => {
-    saveStrategy(strategy)
-    setStrategies(getStrategies())
-    setModalOpen(false)
-    setEditingStrategy(null)
+  const handleSave = async (strategy) => {
+    try {
+      setError(null)
+      await saveStrategy(strategy)
+      await refresh()
+      setModalOpen(false)
+      setEditingStrategy(null)
+    } catch (e) {
+      setError(e.message)
+    }
   }
 
-  const handleDelete = (id) => {
-    deleteStrategy(id)
-    setStrategies(getStrategies())
+  const handleDelete = async (id) => {
+    await deleteStrategy(id)
+    await refresh()
   }
 
-  const handleDuplicate = (id) => {
-    duplicateStrategy(id)
-    setStrategies(getStrategies())
+  const handleDuplicate = async (id) => {
+    await duplicateStrategy(id)
+    await refresh()
   }
 
   const filtered = strategies.filter(s =>
@@ -202,13 +211,19 @@ export default function StrategiesPage() {
             Trading <span className="gradient-text">Strategies</span>
           </h1>
           <p className="text-xs text-muted font-mono mt-1">
-            {strategies.length} strateg{strategies.length !== 1 ? 'ies' : 'y'} saved locally
+            {strategies.length} strateg{strategies.length !== 1 ? 'ies' : 'y'} saved
           </p>
         </div>
         <button onClick={handleNew} className="btn-primary flex items-center gap-2">
           <Plus size={16} /> New Strategy
         </button>
       </div>
+
+      {error && (
+        <div className="p-3 bg-danger/10 border border-danger/30 rounded-lg text-danger text-xs font-mono">
+          {error}
+        </div>
+      )}
 
       {/* Search */}
       {strategies.length > 0 && (

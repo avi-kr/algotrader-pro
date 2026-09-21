@@ -4,7 +4,7 @@ import { useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { FlaskConical, Play, ChevronDown, Settings, RefreshCw, AlertCircle } from 'lucide-react'
 import { getStrategies, getStrategy } from '@/lib/strategies'
-import { calculateIndicators } from '@/lib/indicators'
+import { calculateIndicators } from '@algotrader/strategy-kernel'
 import { NIFTY50, TOP_CRYPTO, TIMEFRAMES } from '@/lib/constants'
 import InfoTooltip from '@/components/InfoTooltip'
 import BacktestReport from '@/components/BacktestReport'
@@ -37,18 +37,22 @@ function BacktestInner() {
   const isIntraday = ['1m', '5m', '15m', '60m', '4h'].includes(timeframe)
 
   useEffect(() => {
-    const strats = getStrategies()
-    setStrategies(strats)
-    if (searchParams.get('strategy')) {
-      const s = strats.find(x => x.id === searchParams.get('strategy'))
-      if (s) { setSelectedStrategy(s); setMarket(s.market || 'indian') }
-    }
+    let cancelled = false
+    getStrategies().then(strats => {
+      if (cancelled) return
+      setStrategies(strats)
+      if (searchParams.get('strategy')) {
+        const s = strats.find(x => x.id === searchParams.get('strategy'))
+        if (s) { setSelectedStrategy(s); setMarket(s.assetClass === 'crypto' ? 'crypto' : 'indian') }
+      }
+    })
+    return () => { cancelled = true }
   }, [])
 
   useEffect(() => {
     if (selectedStrategyId) {
       const s = strategies.find(x => x.id === selectedStrategyId)
-      if (s) { setSelectedStrategy(s); setMarket(s.market || 'indian') }
+      if (s) { setSelectedStrategy(s); setMarket(s.assetClass === 'crypto' ? 'crypto' : 'indian') }
     }
   }, [selectedStrategyId, strategies])
 
@@ -92,14 +96,24 @@ function BacktestInner() {
     setResult(null)
 
     try {
-      // Dynamic import to avoid SSR issues
-      const { runBacktest: bt } = await import('@/lib/backtesting')
-      const res = bt(candles, selectedStrategy, {
-        capital: parseFloat(capital),
-        positionSizePct: parseFloat(positionSize),
-        commission: parseFloat(commission),
-      })
+      // Server-side: runs through packages/strategy-kernel (the same code
+      // path paper/live trading will use) and persists a BacktestRun.
+      const res = await fetch('/api/backtest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          strategyId: selectedStrategy.id,
+          strategy: selectedStrategy.id ? undefined : selectedStrategy,
+          symbol,
+          timeframe,
+          candles,
+          capital: parseFloat(capital),
+          positionSizePct: parseFloat(positionSize),
+          commissionPct: parseFloat(commission),
+        }),
+      }).then(r => r.json())
 
+      if (res.error) throw new Error(res.error)
       setResult(res)
 
       // Build trade overlays for chart

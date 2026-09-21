@@ -4,7 +4,7 @@ import { useSearchParams, useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { Search, BarChart2, ChevronDown, Plus, X, RefreshCw, TrendingUp, TrendingDown } from 'lucide-react'
 import { NIFTY50, TOP_CRYPTO, TIMEFRAMES, INDICATOR_TYPES } from '@/lib/constants'
-import { calculateIndicators } from '@/lib/indicators'
+import { calculateIndicators } from '@algotrader/strategy-kernel'
 import InfoTooltip from '@/components/InfoTooltip'
 
 const TradingChart = dynamic(() => import('@/components/TradingChart'), { ssr: false })

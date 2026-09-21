@@ -162,11 +162,10 @@ export default function StrategyBuilder({ strategy, onChange }) {
             <input type="text" value={strategy.name} onChange={e => set('name', e.target.value)} placeholder="My Strategy" />
           </div>
           <div className="flex flex-col gap-1">
-            <label className="text-xs text-muted font-mono">Market</label>
-            <select value={strategy.market} onChange={e => set('market', e.target.value)}>
-              <option value="indian">Indian (NSE/BSE)</option>
+            <label className="text-xs text-muted font-mono">Asset Class</label>
+            <select value={strategy.assetClass} onChange={e => set('assetClass', e.target.value)}>
+              <option value="us_equity">US Stocks (Alpaca)</option>
               <option value="crypto">Crypto</option>
-              <option value="us">US Stocks</option>
             </select>
           </div>
           <div className="flex flex-col gap-1 sm:col-span-2">
@@ -183,8 +182,8 @@ export default function StrategyBuilder({ strategy, onChange }) {
           </div>
           <div className="flex flex-col gap-1">
             <label className="text-xs text-muted font-mono">Position Size (% of capital)</label>
-            <input type="number" value={strategy.positionSize ?? 10} min="1" max="100"
-              onChange={e => set('positionSize', parseInt(e.target.value))} />
+            <input type="number" value={strategy.positionSizePct ?? 10} min="1" max="100"
+              onChange={e => set('positionSizePct', parseInt(e.target.value))} />
           </div>
         </div>
       </Section>
