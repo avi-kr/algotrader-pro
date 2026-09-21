@@ -14,7 +14,8 @@
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "db:up": "docker compose up -d",
-    "db:migrate": "npm run migrate --workspace=@algotrader/db"
+    "db:migrate": "npm run migrate --workspace=@algotrader/db",
+    "db:migrate:deploy": "npm run migrate:deploy --workspace=@algotrader/db"
   },
   "dependencies": {
     "@algotrader/db": "*",

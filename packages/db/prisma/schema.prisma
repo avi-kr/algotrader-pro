@@ -11,8 +11,15 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  // Pooled connection (e.g. Neon's PgBouncer-compatible pooler) — required on
+  // serverless (Vercel): every function invocation can open a new Postgres
+  // connection, and an unpooled URL here exhausts Postgres's connection limit
+  // under real traffic almost immediately.
+  url       = env("DATABASE_URL")
+  // Direct (unpooled) connection, used only for `prisma migrate` — migrations
+  // run DDL that a transaction pooler can't reliably support.
+  directUrl = env("DIRECT_URL")
 }
 
 enum TradeMode {
