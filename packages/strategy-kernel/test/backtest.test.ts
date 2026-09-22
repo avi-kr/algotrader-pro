@@ -1,8 +1,88 @@
 import { describe, it, expect } from 'vitest'
 import type { Candle, StrategyConfig } from '@algotrader/shared-types'
-import { runBacktest, type BacktestResult } from '../src/backtest'
+import { runBacktest, computeStopLossPrice, computeTakeProfitPrice, computePositionQty, type BacktestResult } from '../src/backtest'
 
 const DAY = 86400
+
+describe('computePositionQty', () => {
+  it('us_equity floors to whole shares', () => {
+    expect(computePositionQty('us_equity', 10000, 190.5)).toBe(Math.floor(10000 / 190.5))
+  })
+
+  it('crypto keeps fractional precision (regression — flooring to a whole unit at BTC-scale prices zeroed every crypto trade)', () => {
+    const qty = computePositionQty('crypto', 10000, 30000)
+    expect(qty).toBeGreaterThan(0)
+    expect(qty).toBeCloseTo(10000 / 30000, 6)
+  })
+
+  it('a position smaller than one unit still floors to exactly 0 for equities (no fractional shares)', () => {
+    expect(computePositionQty('us_equity', 100, 500)).toBe(0)
+  })
+})
+
+describe('computeStopLossPrice', () => {
+  const refCandle: Candle = { time: 0, open: 100, high: 102, low: 98, close: 100, volume: 1 }
+
+  it('long: atr_multiplier subtracts from entry', () => {
+    const price = computeStopLossPrice({
+      type: 'long',
+      entryPrice: 100,
+      stopLoss: { type: 'atr_multiplier', value: 2 },
+      refCandle,
+      atrValue: 3,
+    })
+    expect(price).toBe(100 - 2 * 3)
+  })
+
+  it('short: atr_multiplier adds to entry (regression — this branch was missing and silently fell back to a flat 5% stop)', () => {
+    const price = computeStopLossPrice({
+      type: 'short',
+      entryPrice: 100,
+      stopLoss: { type: 'atr_multiplier', value: 2 },
+      refCandle,
+      atrValue: 3,
+    })
+    expect(price).toBe(100 + 2 * 3)
+    expect(price).not.toBeCloseTo(100 * 1.05, 5) // the old buggy fallback value
+  })
+
+  it('long: last_candle_low uses the reference candle low', () => {
+    expect(
+      computeStopLossPrice({ type: 'long', entryPrice: 100, stopLoss: { type: 'last_candle_low' }, refCandle, atrValue: null })
+    ).toBe(98)
+  })
+
+  it('short: last_candle_low uses the reference candle high', () => {
+    expect(
+      computeStopLossPrice({ type: 'short', entryPrice: 100, stopLoss: { type: 'last_candle_low' }, refCandle, atrValue: null })
+    ).toBe(102)
+  })
+
+  it('long/short: fixed_percent is symmetric around entry', () => {
+    const long = computeStopLossPrice({ type: 'long', entryPrice: 100, stopLoss: { type: 'fixed_percent', value: 5 }, refCandle, atrValue: null })
+    const short = computeStopLossPrice({ type: 'short', entryPrice: 100, stopLoss: { type: 'fixed_percent', value: 5 }, refCandle, atrValue: null })
+    expect(long).toBe(95)
+    expect(short).toBe(105)
+  })
+})
+
+describe('computeTakeProfitPrice', () => {
+  it('long: risk_reward scales the entry-to-stop distance by the ratio', () => {
+    // risk = 100 - 90 = 10; target = entry + 10 * 3 = 130
+    const price = computeTakeProfitPrice({ type: 'long', entryPrice: 100, stopLossPrice: 90, takeProfit: { type: 'risk_reward', value: 3 } })
+    expect(price).toBe(130)
+  })
+
+  it('short: risk_reward scales the entry-to-stop distance by the ratio, on the other side', () => {
+    // risk = 110 - 100 = 10; target = entry - 10 * 3 = 70
+    const price = computeTakeProfitPrice({ type: 'short', entryPrice: 100, stopLossPrice: 110, takeProfit: { type: 'risk_reward', value: 3 } })
+    expect(price).toBe(70)
+  })
+
+  it('type "none" returns null (no take-profit order)', () => {
+    expect(computeTakeProfitPrice({ type: 'long', entryPrice: 100, stopLossPrice: 90, takeProfit: { type: 'none' } })).toBeNull()
+  })
+})
 
 function makeCandlesFromCloses(closes: number[]): Candle[] {
   return closes.map((close, i) => {

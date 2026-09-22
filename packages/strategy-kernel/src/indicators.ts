@@ -167,9 +167,23 @@ export function calculateIndicators(candles: Candle[], indicators: IndicatorConf
   const closes = candles.map(c => c.close)
   const highs = candles.map(c => c.high)
   const lows = candles.map(c => c.low)
+  const opens = candles.map(c => c.open)
   const volumes = candles.map(c => c.volume ?? 1)
 
-  const computed: ComputedSeries = {}
+  // Raw OHLC price series, always available for conditions to reference
+  // directly (e.g. "close is below the Bollinger lower band," "close is
+  // above SMA 200") without needing a dedicated "price" indicator. Also
+  // causal — bar `i`'s value is just candles[i]'s own price, so the
+  // no-look-ahead guarantee above still holds. An indicator explicitly
+  // declared with one of these ids overwrites the raw series below, on
+  // purpose — indicators are processed after this block.
+  const computed: ComputedSeries = {
+    open: opens,
+    high: highs,
+    low: lows,
+    close: closes,
+    volume: volumes,
+  }
 
   for (const ind of indicators) {
     switch (ind.type) {
