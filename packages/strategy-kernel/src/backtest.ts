@@ -1,5 +1,66 @@
-import type { Candle, StrategyConfig } from '@algotrader/shared-types'
+import type { Candle, StopLoss, StrategyConfig, TakeProfit } from '@algotrader/shared-types'
 import { calculateIndicators, checkConditions, atr as atrFn, type ComputedSeries, type Series } from './indicators'
+
+/**
+ * Pure, standalone so it's directly unit-testable — see backtest.test.ts.
+ * Deliberately symmetric between long and short: every stop-loss type must
+ * have a short-side branch, since a missing one silently falls through to
+ * the generic 5% default and quietly ignores the requested sizing (this
+ * function exists because exactly that bug shipped for `atr_multiplier`
+ * on short positions before it had its own test).
+ */
+export function computeStopLossPrice(params: {
+  type: 'long' | 'short'
+  entryPrice: number
+  stopLoss: StopLoss
+  refCandle: Candle
+  atrValue: number | null
+}): number {
+  const { type, entryPrice, stopLoss: sl, refCandle, atrValue } = params
+  const mult = parseFloat(String(sl.value ?? 2))
+  if (type === 'long') {
+    if (sl.type === 'last_candle_low') return refCandle.low
+    if (sl.type === 'atr_multiplier') return entryPrice - mult * (atrValue ?? entryPrice * 0.02)
+    if (sl.type === 'fixed_percent' || sl.type === 'trailing') return entryPrice * (1 - mult / 100)
+    return entryPrice * 0.95
+  }
+  if (sl.type === 'last_candle_low') return refCandle.high
+  if (sl.type === 'atr_multiplier') return entryPrice + mult * (atrValue ?? entryPrice * 0.02)
+  if (sl.type === 'fixed_percent' || sl.type === 'trailing') return entryPrice * (1 + mult / 100)
+  return entryPrice * 1.05
+}
+
+/**
+ * Pure, standalone for the same reason as `computeStopLossPrice`. US equity
+ * orders round DOWN to whole shares (you can't buy 0.3 of a share through a
+ * normal broker). Crypto orders keep 6 decimal places of precision instead —
+ * flooring to a whole unit at typical crypto prices ($30k+ BTC) makes any
+ * position sized under one full coin round to exactly zero, silently
+ * killing every trade a reasonably-sized crypto strategy would ever take.
+ */
+export function computePositionQty(assetClass: 'us_equity' | 'crypto', positionCapital: number, entryPrice: number): number {
+  const raw = positionCapital / entryPrice
+  return assetClass === 'crypto' ? Math.floor(raw * 1e6) / 1e6 : Math.floor(raw)
+}
+
+/** Pure, standalone for the same reason as `computeStopLossPrice`. */
+export function computeTakeProfitPrice(params: {
+  type: 'long' | 'short'
+  entryPrice: number
+  stopLossPrice: number
+  takeProfit: TakeProfit
+}): number | null {
+  const { type, entryPrice, stopLossPrice, takeProfit: tp } = params
+  const mult = parseFloat(String(tp.value ?? 2))
+  if (type === 'long') {
+    if (tp.type === 'risk_reward') return entryPrice + (entryPrice - stopLossPrice) * mult
+    if (tp.type === 'fixed_percent') return entryPrice * (1 + parseFloat(String(tp.value ?? 5)) / 100)
+    return null
+  }
+  if (tp.type === 'risk_reward') return entryPrice - (stopLossPrice - entryPrice) * mult
+  if (tp.type === 'fixed_percent') return entryPrice * (1 - parseFloat(String(tp.value ?? 5)) / 100)
+  return null
+}
 
 export interface BacktestOptions {
   capital?: number
@@ -169,45 +230,12 @@ export function runBacktest(
     const positionCapital = (equityAtEntry * positionSizePct) / 100
 
     const entryPrice = type === 'long' ? candle.open * (1 + slippagePct / 100) : candle.open * (1 - slippagePct / 100)
-    const qty = Math.floor(positionCapital / entryPrice)
+    const qty = computePositionQty(strategy.assetClass, positionCapital, entryPrice)
     if (qty <= 0) return
 
-    let stopLossPrice: number
-    if (type === 'long') {
-      if (sl.type === 'last_candle_low') stopLossPrice = refCandle.low
-      else if (sl.type === 'atr_multiplier') {
-        const atrVal = atrValues ? (atrValues[fillIdx - 1] as number | null) : null
-        stopLossPrice = entryPrice - parseFloat(String(sl.value ?? 2)) * (atrVal ?? entryPrice * 0.02)
-      } else if (sl.type === 'fixed_percent' || sl.type === 'trailing') {
-        stopLossPrice = entryPrice * (1 - parseFloat(String(sl.value ?? 2)) / 100)
-      } else {
-        stopLossPrice = entryPrice * 0.95
-      }
-    } else {
-      if (sl.type === 'last_candle_low') stopLossPrice = refCandle.high
-      else if (sl.type === 'fixed_percent' || sl.type === 'trailing') {
-        stopLossPrice = entryPrice * (1 + parseFloat(String(sl.value ?? 2)) / 100)
-      } else {
-        stopLossPrice = entryPrice * 1.05
-      }
-    }
-
-    let takeProfitPrice: number | null = null
-    if (type === 'long') {
-      if (tp.type === 'risk_reward') {
-        const risk = entryPrice - stopLossPrice
-        takeProfitPrice = entryPrice + risk * parseFloat(String(tp.value ?? 2))
-      } else if (tp.type === 'fixed_percent') {
-        takeProfitPrice = entryPrice * (1 + parseFloat(String(tp.value ?? 5)) / 100)
-      }
-    } else {
-      if (tp.type === 'risk_reward') {
-        const risk = stopLossPrice - entryPrice
-        takeProfitPrice = entryPrice - risk * parseFloat(String(tp.value ?? 2))
-      } else if (tp.type === 'fixed_percent') {
-        takeProfitPrice = entryPrice * (1 - parseFloat(String(tp.value ?? 5)) / 100)
-      }
-    }
+    const atrValue = atrValues ? (atrValues[fillIdx - 1] as number | null) : null
+    const stopLossPrice = computeStopLossPrice({ type, entryPrice, stopLoss: sl, refCandle, atrValue })
+    const takeProfitPrice = computeTakeProfitPrice({ type, entryPrice, stopLossPrice, takeProfit: tp })
 
     const comm = (entryPrice * qty * commissionPct) / 100
     equity -= comm

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { ema, sma, rsi, crossover, crossunder } from '../src/indicators'
+import type { Candle } from '@algotrader/shared-types'
+import { ema, sma, rsi, crossover, crossunder, calculateIndicators, checkCondition } from '../src/indicators'
 
 describe('sma', () => {
   it('matches hand-computed values', () => {
@@ -27,6 +28,30 @@ describe('rsi', () => {
     const data = Array.from({ length: 16 }, (_, i) => 16 - i) // 16..1, period 14
     const result = rsi(data, 14)
     expect(result[14]).toBe(0)
+  })
+})
+
+describe('calculateIndicators — raw price series', () => {
+  const candles: Candle[] = [10, 20, 30, 40].map((close, i) => ({
+    time: i,
+    open: close - 1,
+    high: close + 1,
+    low: close - 2,
+    close,
+    volume: 100,
+  }))
+
+  it('exposes open/high/low/close/volume directly, without needing a declared indicator', () => {
+    const computed = calculateIndicators(candles, [])
+    expect(computed.close).toEqual([10, 20, 30, 40])
+    expect(computed.open).toEqual([9, 19, 29, 39])
+  })
+
+  it('lets a condition compare close price against a computed indicator (e.g. SMA200-style rules)', () => {
+    const computed = calculateIndicators(candles, [{ id: 'sma2', type: 'SMA', period: 2 }])
+    // sma2 at i=3 is (30+40)/2 = 35; close[3] = 40 > 35
+    expect(checkCondition({ type: 'above', a: 'close', b: 'sma2' }, computed, 3)).toBe(true)
+    expect(checkCondition({ type: 'below', a: 'close', b: 'sma2' }, computed, 3)).toBe(false)
   })
 })
 
