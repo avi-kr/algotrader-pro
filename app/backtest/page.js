@@ -100,6 +100,17 @@ function BacktestInner() {
     else if (['15m', '60m', '4h'].includes(timeframe)) setRange('3mo')
   }, [timeframe])
 
+  // The report's own header (symbol, strategy name) re-renders live from
+  // current state, but its trades/metrics come from whatever `result` was
+  // last set to — so switching strategy, symbol, timeframe, or range
+  // without clicking "Run Backtest" again left a stale report on screen
+  // whose header claimed the newly-selected strategy while its numbers
+  // were still from the previous run. Clear it so a config change always
+  // shows the "select and run" empty state instead of a mismatched report.
+  useEffect(() => {
+    setResult(null)
+  }, [selectedStrategyId, symbol, market, timeframe, range])
+
   const fetchHistory = useCallback(async () => {
     if (!symbol) return
     setLoading(true)
