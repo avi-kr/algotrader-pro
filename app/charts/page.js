@@ -9,6 +9,13 @@ import InfoTooltip from '@/components/InfoTooltip'
 
 const TradingChart = dynamic(() => import('@/components/TradingChart'), { ssr: false })
 
+// /api/historical fetches crypto data from Binance and needs a Binance
+// ticker like "BTCUSDT", not TOP_CRYPTO's CoinGecko id ("bitcoin") — see
+// that route for why. Binance's USDT pairs follow `${SYMBOL}USDT`.
+function binanceSymbol(c) {
+  return `${c.symbol}USDT`
+}
+
 const COLORS = ['#00E5A0', '#FFB800', '#00B4FF', '#FF4560', '#A855F7', '#F97316']
 const fmt = v => v != null ? Number(v).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '--'
 
@@ -96,7 +103,7 @@ function ChartsInner() {
     setIndicators(prev => prev.filter(ind => ind.id !== id))
   }
 
-  const symbolList = market === 'crypto' ? TOP_CRYPTO.map(c => ({ symbol: c.id, name: c.name })) : NIFTY50.map(s => ({ symbol: s.symbol, name: s.name }))
+  const symbolList = market === 'crypto' ? TOP_CRYPTO.map(c => ({ symbol: binanceSymbol(c), name: c.name })) : NIFTY50.map(s => ({ symbol: s.symbol, name: s.name }))
 
   const latestCandle = candles[candles.length - 1]
   const prevCandle = candles[candles.length - 2]
@@ -161,7 +168,7 @@ function ChartsInner() {
         {/* Market toggle */}
         <div className="flex gap-1 bg-surface2 rounded-lg p-1 border border-border">
           {['indian', 'crypto'].map(m => (
-            <button key={m} onClick={() => { setMarket(m); setSymbol(m === 'indian' ? 'RELIANCE.NS' : 'bitcoin') }}
+            <button key={m} onClick={() => { setMarket(m); setSymbol(m === 'indian' ? 'RELIANCE.NS' : binanceSymbol(TOP_CRYPTO[0])) }}
               className={`px-3 py-1.5 rounded-md text-xs font-display font-medium transition-all ${market === m ? 'bg-accent text-bg' : 'text-muted hover:text-textprimary'}`}>
               {m === 'indian' ? 'NSE' : 'Crypto'}
             </button>

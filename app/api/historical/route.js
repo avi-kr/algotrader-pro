@@ -27,6 +27,60 @@ function mapInterval(interval) {
   return map[interval] || '1d'
 }
 
+// Binance's own interval strings, plus how far back it's reasonable to
+// paginate for each one (Binance has no fixed lookback limit like Yahoo/
+// CoinGecko, but a 1-minute request over years of history would mean
+// thousands of paginated calls in a single request — clamp the very fine
+// granularities, let daily/weekly honor the full requested range).
+const BINANCE_INTERVAL_MAP = {
+  '1m': '1m', '5m': '5m', '15m': '15m',
+  '60m': '1h', '1h': '1h', '4h': '4h',
+  '1d': '1d', '1wk': '1w',
+}
+const BINANCE_MAX_LOOKBACK_DAYS = {
+  '1m': 7, '5m': 30, '15m': 60, '60m': 180, '1h': 180, '4h': 730,
+}
+
+async function fetchBinanceKlines(symbol, interval, fromMs, toMs) {
+  const binanceInterval = BINANCE_INTERVAL_MAP[interval] || '1d'
+  const candles = []
+  let cursor = fromMs
+
+  // Binance caps each response at 1000 candles — page forward using each
+  // batch's own last close time so this covers the full requested range
+  // regardless of how many candles that is.
+  while (cursor < toMs) {
+    const url = new URL('https://api.binance.com/api/v3/klines')
+    url.searchParams.set('symbol', symbol)
+    url.searchParams.set('interval', binanceInterval)
+    url.searchParams.set('startTime', String(cursor))
+    url.searchParams.set('endTime', String(toMs))
+    url.searchParams.set('limit', '1000')
+
+    const res = await fetch(url)
+    if (!res.ok) throw new Error(`Binance klines error (${res.status})`)
+    const rows = await res.json()
+    if (!Array.isArray(rows) || rows.length === 0) break
+
+    for (const row of rows) {
+      candles.push({
+        time: Math.floor(row[0] / 1000),
+        open: Number(row[1]),
+        high: Number(row[2]),
+        low: Number(row[3]),
+        close: Number(row[4]),
+        volume: Number(row[5]),
+      })
+    }
+
+    const lastCloseTime = rows[rows.length - 1][6]
+    if (lastCloseTime <= cursor) break // guard against a malformed/stuck response
+    cursor = lastCloseTime + 1
+  }
+
+  return candles
+}
+
 export async function GET(request) {
   const { searchParams } = new URL(request.url)
   const symbol = searchParams.get('symbol')
@@ -38,16 +92,29 @@ export async function GET(request) {
 
   try {
     if (market === 'crypto') {
-      const daysMap = { '1d': 365, '1wk': 730, '60m': 90, '15m': 30, '5m': 7, '1m': 1 }
-      const days = daysMap[interval] || 365
-      const url = `https://api.coingecko.com/api/v3/coins/${symbol}/ohlc?vs_currency=inr&days=${days}`
-      const res = await fetch(url, { headers: { 'Accept': 'application/json' } })
-      if (!res.ok) throw new Error('CoinGecko OHLC error')
-      const raw = await res.json()
-      const candles = raw.map(([time, open, high, low, close]) => ({
-        time: Math.floor(time / 1000), open, high, low, close, volume: 0,
-      }))
-      return NextResponse.json({ symbol, interval, range, candles, meta: { currency: 'INR' } })
+      // Binance's public klines endpoint (no API key needed) gives real
+      // OHLCV at the actually-requested granularity over the actually-
+      // requested range. The previous CoinGecko /ohlc endpoint silently
+      // ignored `range` entirely and auto-degrades candle granularity for
+      // large `days` values (365 days there returns ~91 FOUR-DAY candles
+      // mislabeled as daily) — that's what was capping every crypto
+      // backtest at ~92 candles regardless of the range picked in the UI.
+      const now = Date.now()
+      const toMs = now
+      let fromMs
+      const clampDays = BINANCE_MAX_LOOKBACK_DAYS[interval]
+      if (clampDays) {
+        fromMs = now - clampDays * 24 * 60 * 60 * 1000
+      } else {
+        const period1Date = rangeToPeriod1(range)
+        fromMs = period1Date.getTime()
+      }
+
+      const candles = await fetchBinanceKlines(symbol, interval, fromMs, toMs)
+      // Binance quotes against USDT, not INR — meta.currency reflects that
+      // even though some UI labels still show a ₹ prefix (a pre-existing
+      // cosmetic mismatch, not something this fix changes the meaning of).
+      return NextResponse.json({ symbol, interval, range, candles, meta: { currency: 'USDT' } })
     }
 
     // Intraday intervals have Yahoo-imposed max lookback limits

@@ -9,13 +9,22 @@ import { NIFTY50, TOP_CRYPTO, TIMEFRAMES } from '@/lib/constants'
 import InfoTooltip from '@/components/InfoTooltip'
 import BacktestReport from '@/components/BacktestReport'
 
+// /api/historical fetches crypto data from Binance (real OHLCV over the
+// actual requested range — see that route for why CoinGecko's /ohlc
+// endpoint couldn't do this), which needs a Binance ticker like "BTCUSDT",
+// not TOP_CRYPTO's CoinGecko id ("bitcoin"). Binance's USDT pairs follow
+// `${SYMBOL}USDT` for every coin in TOP_CRYPTO.
+function binanceSymbol(c) {
+  return `${c.symbol}USDT`
+}
+
 // A strategy's assetClass and the currently-selected symbol can otherwise
 // fall out of sync (e.g. a crypto strategy selected while `symbol` is still
 // a leftover equity ticker), which sends market=crypto&symbol=RELIANCE.NS
 // to /api/historical and 500s. Selecting a strategy always resets the
 // symbol to a valid default for its market.
 function defaultSymbolFor(mkt) {
-  return mkt === 'crypto' ? TOP_CRYPTO[0].id : NIFTY50[0].symbol
+  return mkt === 'crypto' ? binanceSymbol(TOP_CRYPTO[0]) : NIFTY50[0].symbol
 }
 
 const TradingChart = dynamic(() => import('@/components/TradingChart'), { ssr: false })
@@ -148,7 +157,7 @@ function BacktestInner() {
   }
 
   const symbolList = market === 'crypto'
-    ? TOP_CRYPTO.map(c => ({ symbol: c.id, name: c.name }))
+    ? TOP_CRYPTO.map(c => ({ symbol: binanceSymbol(c), name: c.name }))
     : NIFTY50.map(s => ({ symbol: s.symbol, name: s.name }))
 
   const RANGES = [
@@ -200,7 +209,7 @@ function BacktestInner() {
           {/* Market */}
           <div>
             <label className="text-xs text-muted font-mono block mb-1.5">Market</label>
-            <select value={market} onChange={e => { setMarket(e.target.value); setSymbol(e.target.value === 'indian' ? 'RELIANCE.NS' : 'bitcoin') }} className="w-full">
+            <select value={market} onChange={e => { setMarket(e.target.value); setSymbol(e.target.value === 'indian' ? 'RELIANCE.NS' : binanceSymbol(TOP_CRYPTO[0])) }} className="w-full">
               <option value="indian">Indian (NSE)</option>
               <option value="crypto">Crypto</option>
               <option value="us">US Stocks</option>
