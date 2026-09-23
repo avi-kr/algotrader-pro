@@ -9,6 +9,15 @@ import { NIFTY50, TOP_CRYPTO, TIMEFRAMES } from '@/lib/constants'
 import InfoTooltip from '@/components/InfoTooltip'
 import BacktestReport from '@/components/BacktestReport'
 
+// A strategy's assetClass and the currently-selected symbol can otherwise
+// fall out of sync (e.g. a crypto strategy selected while `symbol` is still
+// a leftover equity ticker), which sends market=crypto&symbol=RELIANCE.NS
+// to /api/historical and 500s. Selecting a strategy always resets the
+// symbol to a valid default for its market.
+function defaultSymbolFor(mkt) {
+  return mkt === 'crypto' ? TOP_CRYPTO[0].id : NIFTY50[0].symbol
+}
+
 const TradingChart = dynamic(() => import('@/components/TradingChart'), { ssr: false })
 
 function BacktestInner() {
@@ -43,7 +52,10 @@ function BacktestInner() {
       setStrategies(strats)
       if (searchParams.get('strategy')) {
         const s = strats.find(x => x.id === searchParams.get('strategy'))
-        if (s) { setSelectedStrategy(s); setMarket(s.assetClass === 'crypto' ? 'crypto' : 'indian') }
+        if (s) {
+          const mkt = s.assetClass === 'crypto' ? 'crypto' : 'indian'
+          setSelectedStrategy(s); setMarket(mkt); setSymbol(defaultSymbolFor(mkt))
+        }
       }
     })
     return () => { cancelled = true }
@@ -52,7 +64,10 @@ function BacktestInner() {
   useEffect(() => {
     if (selectedStrategyId) {
       const s = strategies.find(x => x.id === selectedStrategyId)
-      if (s) { setSelectedStrategy(s); setMarket(s.assetClass === 'crypto' ? 'crypto' : 'indian') }
+      if (s) {
+        const mkt = s.assetClass === 'crypto' ? 'crypto' : 'indian'
+        setSelectedStrategy(s); setMarket(mkt); setSymbol(defaultSymbolFor(mkt))
+      }
     }
   }, [selectedStrategyId, strategies])
 
