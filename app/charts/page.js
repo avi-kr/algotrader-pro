@@ -47,7 +47,12 @@ function ChartsInner() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch(`/api/historical?symbol=${encodeURIComponent(symbol)}&interval=${tf.yf}&range=${tf.range}&market=${market}`)
+      // tf.yf is Yahoo's own interval mapping (it has no native 4h, so '4h'
+      // maps to a 60m request there) — but /api/historical's crypto branch
+      // supports genuine 4h via Coinbase aggregation, keyed on the literal
+      // string '4h'. Sending tf.yf for crypto would silently fetch 60m bars.
+      const apiInterval = market === 'crypto' ? timeframe : tf.yf
+      const res = await fetch(`/api/historical?symbol=${encodeURIComponent(symbol)}&interval=${apiInterval}&range=${tf.range}&market=${market}`)
       const data = await res.json()
       if (data.error) throw new Error(data.error)
       setCandles(data.candles || [])
