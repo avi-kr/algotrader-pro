@@ -105,7 +105,13 @@ function BacktestInner() {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch(`/api/historical?symbol=${encodeURIComponent(symbol)}&interval=${tf.yf}&range=${range}&market=${market}`)
+      // tf.yf exists because Yahoo has no native 4h interval (it maps '4h'
+      // to a 60m request there) — but /api/historical's crypto branch DOES
+      // support genuine 4h via Coinbase (aggregating real 1h candles), keyed
+      // on the literal interval string '4h'. Sending tf.yf for crypto would
+      // silently request 60m candles for a "4H" strategy instead.
+      const apiInterval = market === 'crypto' ? timeframe : tf.yf
+      const res = await fetch(`/api/historical?symbol=${encodeURIComponent(symbol)}&interval=${apiInterval}&range=${range}&market=${market}`)
       const data = await res.json()
       if (data.error) throw new Error(data.error)
       setCandles(data.candles || [])
