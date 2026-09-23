@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic'
 import { FlaskConical, Play, ChevronDown, Settings, RefreshCw, AlertCircle } from 'lucide-react'
 import { getStrategies, getStrategy } from '@/lib/strategies'
 import { calculateIndicators } from '@algotrader/strategy-kernel'
-import { NIFTY50, TOP_CRYPTO, TIMEFRAMES } from '@/lib/constants'
+import { NIFTY50, US_EQUITIES, TOP_CRYPTO, TIMEFRAMES } from '@/lib/constants'
 import InfoTooltip from '@/components/InfoTooltip'
 import BacktestReport from '@/components/BacktestReport'
 
@@ -24,7 +24,22 @@ function binanceSymbol(c) {
 // to /api/historical and 500s. Selecting a strategy always resets the
 // symbol to a valid default for its market.
 function defaultSymbolFor(mkt) {
-  return mkt === 'crypto' ? binanceSymbol(TOP_CRYPTO[0]) : NIFTY50[0].symbol
+  if (mkt === 'crypto') return binanceSymbol(TOP_CRYPTO[0])
+  if (mkt === 'us') return US_EQUITIES[0].symbol
+  return NIFTY50[0].symbol
+}
+
+// shared-types' AssetClass enum only has 'us_equity' and 'crypto' — there is
+// no 'indian' asset class. A strategy's assetClass maps to this page's
+// market selector, so a us_equity strategy (e.g. one written against
+// AAPL/MSFT/SPY/QQQ, as all 4 originally-specified strategies were) lands on
+// the 'us' market and real US tickers, not on 'indian'/NIFTY50 — the two
+// non-crypto markets are otherwise indistinguishable to Yahoo's API (it
+// accepts both), so nothing else here would have caught the mismatch.
+function marketFor(assetClass) {
+  if (assetClass === 'crypto') return 'crypto'
+  if (assetClass === 'us_equity') return 'us'
+  return 'indian'
 }
 
 // A strategy's own `timeframe` (persisted with it at creation — e.g. crypto
@@ -73,9 +88,9 @@ function BacktestInner() {
       if (searchParams.get('strategy')) {
         const s = strats.find(x => x.id === searchParams.get('strategy'))
         if (s) {
-          const mkt = s.assetClass === 'crypto' ? 'crypto' : 'indian'
+          const mkt = marketFor(s.assetClass)
           setSelectedStrategy(s); setMarket(mkt); setSymbol(defaultSymbolFor(mkt))
-          setTimeframe(normalizeTimeframe(s.timeframe))
+          setTimeframe(normalizeTimeframe(s.timeframe)); setRange('5y')
         }
       }
     })
@@ -86,9 +101,9 @@ function BacktestInner() {
     if (selectedStrategyId) {
       const s = strategies.find(x => x.id === selectedStrategyId)
       if (s) {
-        const mkt = s.assetClass === 'crypto' ? 'crypto' : 'indian'
+        const mkt = marketFor(s.assetClass)
         setSelectedStrategy(s); setMarket(mkt); setSymbol(defaultSymbolFor(mkt))
-        setTimeframe(normalizeTimeframe(s.timeframe))
+        setTimeframe(normalizeTimeframe(s.timeframe)); setRange('5y')
       }
     }
   }, [selectedStrategyId, strategies])
@@ -188,6 +203,8 @@ function BacktestInner() {
 
   const symbolList = market === 'crypto'
     ? TOP_CRYPTO.map(c => ({ symbol: binanceSymbol(c), name: c.name }))
+    : market === 'us'
+    ? US_EQUITIES.map(s => ({ symbol: s.symbol, name: s.name }))
     : NIFTY50.map(s => ({ symbol: s.symbol, name: s.name }))
 
   const RANGES = [
@@ -239,7 +256,7 @@ function BacktestInner() {
           {/* Market */}
           <div>
             <label className="text-xs text-muted font-mono block mb-1.5">Market</label>
-            <select value={market} onChange={e => { setMarket(e.target.value); setSymbol(e.target.value === 'indian' ? 'RELIANCE.NS' : binanceSymbol(TOP_CRYPTO[0])) }} className="w-full">
+            <select value={market} onChange={e => { setMarket(e.target.value); setSymbol(defaultSymbolFor(e.target.value)) }} className="w-full">
               <option value="indian">Indian (NSE)</option>
               <option value="crypto">Crypto</option>
               <option value="us">US Stocks</option>
