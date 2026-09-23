@@ -9,9 +9,9 @@ import InfoTooltip from '@/components/InfoTooltip'
 
 const TradingChart = dynamic(() => import('@/components/TradingChart'), { ssr: false })
 
-// /api/historical fetches crypto data from Binance and needs a Binance
-// ticker like "BTCUSDT", not TOP_CRYPTO's CoinGecko id ("bitcoin") — see
-// that route for why. Binance's USDT pairs follow `${SYMBOL}USDT`.
+// /api/historical fetches crypto data from Coinbase but still accepts a
+// Binance-style ticker like "BTCUSDT" (mapped server-side to Coinbase's
+// product id) rather than TOP_CRYPTO's CoinGecko id ("bitcoin").
 function binanceSymbol(c) {
   return `${c.symbol}USDT`
 }
