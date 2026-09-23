@@ -9,11 +9,11 @@ import { NIFTY50, TOP_CRYPTO, TIMEFRAMES } from '@/lib/constants'
 import InfoTooltip from '@/components/InfoTooltip'
 import BacktestReport from '@/components/BacktestReport'
 
-// /api/historical fetches crypto data from Binance (real OHLCV over the
-// actual requested range — see that route for why CoinGecko's /ohlc
-// endpoint couldn't do this), which needs a Binance ticker like "BTCUSDT",
-// not TOP_CRYPTO's CoinGecko id ("bitcoin"). Binance's USDT pairs follow
-// `${SYMBOL}USDT` for every coin in TOP_CRYPTO.
+// /api/historical fetches crypto data from Coinbase (real OHLCV over the
+// actual requested range — see that route for why Binance and CoinGecko's
+// /ohlc endpoint couldn't do this), but still accepts a Binance-style
+// ticker like "BTCUSDT" and maps it server-side to Coinbase's product id,
+// so this only needs TOP_CRYPTO's symbol, not its CoinGecko id ("bitcoin").
 function binanceSymbol(c) {
   return `${c.symbol}USDT`
 }
@@ -25,6 +25,17 @@ function binanceSymbol(c) {
 // symbol to a valid default for its market.
 function defaultSymbolFor(mkt) {
   return mkt === 'crypto' ? binanceSymbol(TOP_CRYPTO[0]) : NIFTY50[0].symbol
+}
+
+// A strategy's own `timeframe` (persisted with it at creation — e.g. crypto
+// mean-reversion/momentum strategies designed around hourly/4-hour candles,
+// not daily ones) uses '1h' for the hourly granularity, but this page's
+// TIMEFRAMES list (lib/constants.js) spells that value '60m'. Left
+// unmapped, selecting such a strategy would silently fall through to the
+// default '1D' timeframe instead of the one it was actually designed for.
+const TIMEFRAME_ALIASES = { '1h': '60m' }
+function normalizeTimeframe(tf) {
+  return TIMEFRAME_ALIASES[tf] || tf || '1d'
 }
 
 const TradingChart = dynamic(() => import('@/components/TradingChart'), { ssr: false })
@@ -64,6 +75,7 @@ function BacktestInner() {
         if (s) {
           const mkt = s.assetClass === 'crypto' ? 'crypto' : 'indian'
           setSelectedStrategy(s); setMarket(mkt); setSymbol(defaultSymbolFor(mkt))
+          setTimeframe(normalizeTimeframe(s.timeframe))
         }
       }
     })
@@ -76,6 +88,7 @@ function BacktestInner() {
       if (s) {
         const mkt = s.assetClass === 'crypto' ? 'crypto' : 'indian'
         setSelectedStrategy(s); setMarket(mkt); setSymbol(defaultSymbolFor(mkt))
+        setTimeframe(normalizeTimeframe(s.timeframe))
       }
     }
   }, [selectedStrategyId, strategies])
