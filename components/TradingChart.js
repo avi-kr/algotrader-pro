@@ -99,12 +99,20 @@ export default function TradingChart({
 
       if (def.type === 'BB') {
         const upper = indicators[`${def.id}_upper`]
+        const middle = indicators[`${def.id}_middle`]
         const lower = indicators[`${def.id}_lower`]
         if (upper && lower) {
           const upSeries = chart.addLineSeries({ color: def.color || '#6366F1', lineWidth: 1, lastValueVisible: false, priceLineVisible: false, title: 'BB Upper' })
           const lowSeries = chart.addLineSeries({ color: def.color || '#6366F1', lineWidth: 1, lastValueVisible: false, priceLineVisible: false, title: 'BB Lower' })
           upSeries.setData(sortedCandles.map((c, i) => ({ time: c.time, value: upper[i] })).filter(d => d.value != null))
           lowSeries.setData(sortedCandles.map((c, i) => ({ time: c.time, value: lower[i] })).filter(d => d.value != null))
+          // The kernel always computes a middle band (see calculateIndicators
+          // in strategy-kernel) — it just was never drawn here, which made
+          // BB look like a 2-line upper/lower-only indicator on the chart.
+          if (middle) {
+            const midSeries = chart.addLineSeries({ color: def.color || '#6366F1', lineWidth: 1, lineStyle: LineStyle.Dashed, lastValueVisible: false, priceLineVisible: false, title: 'BB Middle' })
+            midSeries.setData(sortedCandles.map((c, i) => ({ time: c.time, value: middle[i] })).filter(d => d.value != null))
+          }
         }
       }
     }
