@@ -373,16 +373,33 @@ function calculateMetrics(
     }
   }
 
+  const firstDate = new Date(candles[0].time * 1000)
+  const lastDate = new Date(candles[candles.length - 1].time * 1000)
+  const years = Math.max((lastDate.getTime() - firstDate.getTime()) / (365 * 24 * 3600 * 1000), 0.1)
+
+  // Sharpe/Sortino here are computed from PER-TRADE returns, not per-bar
+  // (fixed) returns — the equity curve only marks points at trade exits, not
+  // every candle. A per-trade return series must be annualized by the
+  // actual number of trades per year, not a fixed sqrt(252): sqrt(252)
+  // assumes one return observation per trading day, which wildly overstates
+  // Sharpe for a strategy that only trades a handful of times a year (a
+  // 1D strategy with 7 trades over 5 years isn't sampling daily), and
+  // understates it for one trading many times a day. It also implicitly
+  // assumed every timeframe (1H, 4H, 1D alike) shared the same annualization
+  // constant, which compared strategies at different granularities unfairly.
+  const tradesPerYear = trades.length / years
+  const annualizationFactor = Math.sqrt(tradesPerYear)
+
   const returns = trades.map(t => t.pnlPct / 100)
   const avgReturn = returns.reduce((a, b) => a + b, 0) / (returns.length || 1)
   const variance = returns.reduce((sum, r) => sum + (r - avgReturn) ** 2, 0) / (returns.length || 1)
   const stdDev = Math.sqrt(variance)
-  const sharpe = stdDev > 0 ? (avgReturn / stdDev) * Math.sqrt(252) : 0
+  const sharpe = stdDev > 0 ? (avgReturn / stdDev) * annualizationFactor : 0
 
   const negReturns = returns.filter(r => r < 0)
   const downVariance = negReturns.reduce((sum, r) => sum + r * r, 0) / (negReturns.length || 1)
   const downStdDev = Math.sqrt(downVariance)
-  const sortino = downStdDev > 0 ? (avgReturn / downStdDev) * Math.sqrt(252) : 0
+  const sortino = downStdDev > 0 ? (avgReturn / downStdDev) * annualizationFactor : 0
 
   const monthly: Record<string, number> = {}
   for (const trade of trades) {
@@ -391,9 +408,6 @@ function calculateMetrics(
     monthly[key] = (monthly[key] || 0) + trade.pnl
   }
 
-  const firstDate = new Date(candles[0].time * 1000)
-  const lastDate = new Date(candles[candles.length - 1].time * 1000)
-  const years = Math.max((lastDate.getTime() - firstDate.getTime()) / (365 * 24 * 3600 * 1000), 0.1)
   const annualReturn = (Math.pow(finalEquity / initialCapital, 1 / years) - 1) * 100
 
   return {

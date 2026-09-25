@@ -189,3 +189,55 @@ describe('runBacktest — no look-ahead regression', () => {
     expect(resolvedA).toEqual(resolvedB)
   })
 })
+
+describe('runBacktest — Sharpe/Sortino annualization (regression)', () => {
+  it('annualizes by actual trades-per-year, not a fixed sqrt(252) — a sparsely-trading multi-year strategy must not get a daily-return annualization factor', () => {
+    // A slow oscillation over many years produces only a handful of EMA
+    // crossover round trips — nothing close to one trade per trading day.
+    const YEARS_SPAN = 5
+    const TOTAL_DAYS = 365 * YEARS_SPAN
+    const closes = Array.from({ length: TOTAL_DAYS }, (_, i) => 100 + 20 * Math.sin(i / 90) + i * 0.02)
+    const candles = makeCandlesFromCloses(closes)
+
+    const strategy: StrategyConfig = {
+      name: 'ema-crossover-sparse',
+      assetClass: 'us_equity',
+      indicators: [
+        { id: 'ema9', type: 'EMA', period: 9 },
+        { id: 'ema20', type: 'EMA', period: 20 },
+      ],
+      conditions: {
+        longEntry: [{ type: 'crossover', a: 'ema9', b: 'ema20' }],
+        longExit: [{ type: 'crossunder', a: 'ema9', b: 'ema20' }],
+        shortEntry: [],
+        shortExit: [],
+      },
+      stopLoss: { type: 'none' },
+      takeProfit: { type: 'none' },
+      tradeDirection: 'long_only',
+      positionSizePct: 10,
+    }
+
+    const result = runBacktest(candles, strategy) as Extract<BacktestResult, { trades: unknown }>
+    // A handful of trades over 5 years, definitely not ~1/trading-day.
+    expect(result.trades.length).toBeGreaterThan(1)
+    expect(result.trades.length).toBeLessThan(50)
+
+    const returns = result.trades.map(t => t.pnlPct / 100)
+    const avgReturn = returns.reduce((a, b) => a + b, 0) / returns.length
+    const variance = returns.reduce((sum, r) => sum + (r - avgReturn) ** 2, 0) / returns.length
+    const stdDev = Math.sqrt(variance)
+
+    const firstTime = candles[0].time
+    const lastTime = candles[candles.length - 1].time
+    const years = (lastTime - firstTime) / (365 * 24 * 3600)
+    const tradesPerYearFactor = Math.sqrt(result.trades.length / years)
+    const expectedSharpe = (avgReturn / stdDev) * tradesPerYearFactor
+    const oldBuggySharpe = (avgReturn / stdDev) * Math.sqrt(252) // annualizing per-trade returns as if they were daily
+
+    expect(result.metrics.sharpeRatio).toBeCloseTo(expectedSharpe, 5)
+    // The old formula would be off by a large, predictable multiple here
+    // since trades-per-year is far below 252 — guard against regressing to it.
+    expect(result.metrics.sharpeRatio).not.toBeCloseTo(oldBuggySharpe, 1)
+  })
+})

@@ -27,7 +27,10 @@ export default function Navbar() {
       const h = ist.getHours(), m = ist.getMinutes(), d = ist.getDay()
       const open = (h > 9 || (h === 9 && m >= 15)) && (h < 15 || (h === 15 && m <= 30))
       const weekday = d >= 1 && d <= 5
-      setMarketStatus(weekday && open ? 'MARKET OPEN' : 'MARKET CLOSED')
+      // This clock only ever reflects NSE hours — it was previously labeled
+      // as a generic "MARKET" status, which falsely implied crypto (which
+      // trades 24/7, every day) was closed whenever the NSE was.
+      setMarketStatus(weekday && open ? 'NSE OPEN' : 'NSE CLOSED')
     }
     tick()
     const id = setInterval(tick, 1000)
@@ -67,8 +70,8 @@ export default function Navbar() {
           {/* Market status + time */}
           <div className="hidden sm:flex items-center gap-3 text-xs font-mono">
             <div className="flex items-center gap-2">
-              <span className={`w-2 h-2 rounded-full ${marketStatus === 'MARKET OPEN' ? 'bg-accent pulse-live' : 'bg-muted'}`} />
-              <span className={marketStatus === 'MARKET OPEN' ? 'text-accent' : 'text-muted'}>
+              <span className={`w-2 h-2 rounded-full ${marketStatus === 'NSE OPEN' ? 'bg-accent pulse-live' : 'bg-muted'}`} />
+              <span className={marketStatus === 'NSE OPEN' ? 'text-accent' : 'text-muted'}>
                 {marketStatus}
               </span>
             </div>
@@ -104,7 +107,7 @@ export default function Navbar() {
                 </Link>
               ))}
               <div className="mt-2 pt-2 border-t border-border flex items-center gap-2 px-4 text-xs font-mono text-muted">
-                <span className={`w-2 h-2 rounded-full ${marketStatus === 'MARKET OPEN' ? 'bg-accent' : 'bg-muted'}`} />
+                <span className={`w-2 h-2 rounded-full ${marketStatus === 'NSE OPEN' ? 'bg-accent' : 'bg-muted'}`} />
                 {marketStatus} · {time}
               </div>
             </div>
