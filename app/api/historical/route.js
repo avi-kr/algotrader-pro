@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import YahooFinance from 'yahoo-finance2'
 import { TOP_CRYPTO } from '@/lib/constants'
+import { prisma } from '@algotrader/db'
 
 const yf = new YahooFinance({ suppressNotices: ['yahooSurvey', 'ripHistorical'] })
 
@@ -106,6 +107,23 @@ function aggregateCandles(candles, groupSize) {
   return out
 }
 
+// How far back to look when checking our own DB cache, mirroring each
+// market's own intraday-clamp logic so a cache hit covers the same window a
+// live fetch would have requested.
+function computeFromSec(market, interval, range) {
+  const nowSec = Math.floor(Date.now() / 1000)
+  if (market === 'crypto') {
+    const clampDays = INTRADAY_LOOKBACK_DAYS[interval]
+    return clampDays ? nowSec - clampDays * 86400 : Math.floor(rangeToPeriod1(range).getTime() / 1000)
+  }
+  const intradayIntervals = ['1m', '5m', '15m', '60m', '4h']
+  if (intradayIntervals.includes(interval)) {
+    const maxDays = { '1m': 7, '5m': 30, '15m': 60, '60m': 60, '4h': 60 }
+    return nowSec - (maxDays[interval] || 60) * 86400
+  }
+  return Math.floor(rangeToPeriod1(range).getTime() / 1000)
+}
+
 export async function GET(request) {
   const { searchParams } = new URL(request.url)
   const symbol = searchParams.get('symbol')
@@ -114,6 +132,27 @@ export async function GET(request) {
   const market = searchParams.get('market') || 'indian'
 
   if (!symbol) return NextResponse.json({ error: 'symbol required' }, { status: 400 })
+
+  // Manually-imported data (e.g. Dhan-exported NSE candles, see
+  // /api/candles/import) takes priority over any live fetch — it's real
+  // OHLCV the user already owns, often covering far more history than
+  // Yahoo's free API can serve (which caps 1-minute data at 7 days). This
+  // check is deliberately outside the main try/catch below: a DB hiccup
+  // here should fall through to the live fetch, not fail the whole request.
+  try {
+    const fromSec = computeFromSec(market, interval, range)
+    const nowSec = Math.floor(Date.now() / 1000)
+    const cached = await prisma.candle.findMany({
+      where: { symbol, timeframe: interval, time: { gte: fromSec, lte: nowSec } },
+      orderBy: { time: 'asc' },
+    })
+    if (cached.length > 0) {
+      const candles = cached.map(c => ({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume }))
+      return NextResponse.json({ symbol, interval, range, candles, meta: { currency: market === 'crypto' ? 'USD' : 'INR', source: 'cached' } })
+    }
+  } catch (err) {
+    console.error('historical cache lookup failed, falling back to live fetch:', err.message)
+  }
 
   try {
     if (market === 'crypto') {
