@@ -122,8 +122,15 @@ function BacktestInner() {
   // whose header claimed the newly-selected strategy while its numbers
   // were still from the previous run. Clear it so a config change always
   // shows the "select and run" empty state instead of a mismatched report.
+  // tradeOverlays has the same problem one level up: the Chart Preview
+  // renders it independently of `result`, so switching config could leave
+  // the previous run's buy/sell markers on a chart for a completely
+  // different strategy/symbol — or, on a strategy that hasn't been run yet
+  // this session, show no markers at all and look like signals aren't
+  // firing when the strategy simply hasn't been backtested here.
   useEffect(() => {
     setResult(null)
+    setTradeOverlays([])
   }, [selectedStrategyId, symbol, market, timeframe, range])
 
   const fetchHistory = useCallback(async () => {
