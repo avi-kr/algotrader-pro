@@ -154,6 +154,134 @@ export function crossunder(a: Series, b: Series, i: number): boolean {
   )
 }
 
+export interface MarketStructure {
+  /** +1 once a bullish BOS confirms on this bar, else null. Consumed on
+   * confirmation — never repeats every bar while price stays above the
+   * broken level, only fires on the specific break bar. */
+  bosBull: Series
+  bosBear: Series
+  /** +1 on the bar a bullish/bearish Change of Character confirms. */
+  chochBull: Series
+  chochBear: Series
+  /** The active (most recently confirmed, not yet broken) swing high/low
+   * price, held constant bar-to-bar until broken or replaced — this is the
+   * "resistance"/"support" ray a chart would draw. */
+  swingHighLevel: Series
+  swingLowLevel: Series
+  /** +1 = Higher High / Higher Low, -1 = Lower High / Lower Low. Only set on
+   * the bar a swing is CONFIRMED, else null. */
+  highClass: Series
+  lowClass: Series
+  /** +1 bullish, -1 bearish, null = not yet established (fewer than one
+   * confirmed swing high AND low exist, or the very first, unlabeled break). */
+  bias: Series
+}
+
+/**
+ * Deterministic market-structure detection: swing highs/lows (close-price
+ * fractals, confirmed `swingWidth` bars after they form — a pivot at bar `i`
+ * cannot be known until bar `i + swingWidth`, so every series here only
+ * becomes non-null starting at each event's own confirmation bar, never at
+ * the pivot bar itself), Break of Structure (a confirmed break past the
+ * active swing level in the direction of the prevailing bias — continuation),
+ * and Change of Character (the first break in the OPPOSITE direction —
+ * reversal, which flips bias). A broken level is consumed immediately so
+ * BOS/CHOCH fire exactly once per break, not on every subsequent bar that
+ * stays past it. `maxAgeBars` drops a confirmed swing from consideration
+ * once it's this stale, so structure logic never reacts to an ancient,
+ * irrelevant level on a long-quiet chart.
+ */
+export function computeMarketStructure(closes: number[], swingWidth = 2, maxAgeBars = 500): MarketStructure {
+  const n = closes.length
+  const result: MarketStructure = {
+    bosBull: new Array(n).fill(null),
+    bosBear: new Array(n).fill(null),
+    chochBull: new Array(n).fill(null),
+    chochBear: new Array(n).fill(null),
+    swingHighLevel: new Array(n).fill(null),
+    swingLowLevel: new Array(n).fill(null),
+    highClass: new Array(n).fill(null),
+    lowClass: new Array(n).fill(null),
+    bias: new Array(n).fill(null),
+  }
+  if (n < swingWidth * 2 + 1) return result
+
+  // Pass 1: raw fractal pivots on CLOSE price, each carrying the bar index
+  // at which it becomes knowable (pivotIdx + swingWidth) and its HH/LH or
+  // HL/LL classification relative to the previous confirmed swing of the
+  // same type — classification only compares same-type swings, independent
+  // of trend bias.
+  type SwingEvent = { confirmIdx: number; type: 'high' | 'low'; price: number; pivotIdx: number; cls: 1 | -1 }
+  const events: SwingEvent[] = []
+  let prevHighPrice: number | null = null
+  let prevLowPrice: number | null = null
+
+  for (let i = swingWidth; i < n - swingWidth; i++) {
+    let isHigh = true
+    let isLow = true
+    for (let k = 1; k <= swingWidth; k++) {
+      if (isHigh && !(closes[i] > closes[i - k] && closes[i] > closes[i + k])) isHigh = false
+      if (isLow && !(closes[i] < closes[i - k] && closes[i] < closes[i + k])) isLow = false
+      if (!isHigh && !isLow) break
+    }
+    if (isHigh) {
+      const cls: 1 | -1 = prevHighPrice === null || closes[i] > prevHighPrice ? 1 : -1
+      events.push({ confirmIdx: i + swingWidth, type: 'high', price: closes[i], pivotIdx: i, cls })
+      prevHighPrice = closes[i]
+    }
+    if (isLow) {
+      const cls: 1 | -1 = prevLowPrice === null || closes[i] < prevLowPrice ? -1 : 1
+      events.push({ confirmIdx: i + swingWidth, type: 'low', price: closes[i], pivotIdx: i, cls })
+      prevLowPrice = closes[i]
+    }
+  }
+  // confirmIdx = pivotIdx + swingWidth is strictly increasing with pivotIdx,
+  // and pivotIdx only increases through the loop above, so events are
+  // already confirmIdx-ordered — no sort needed.
+
+  // Pass 2: walk bar-by-bar, applying swing confirmations as we reach them,
+  // then checking whether THIS bar's close breaks the active level.
+  let eventPtr = 0
+  let activeHigh: { price: number; pivotIdx: number } | null = null
+  let activeLow: { price: number; pivotIdx: number } | null = null
+  let bias: 'bull' | 'bear' | null = null
+
+  for (let t = 0; t < n; t++) {
+    while (eventPtr < events.length && events[eventPtr].confirmIdx === t) {
+      const ev = events[eventPtr]
+      if (ev.type === 'high') {
+        activeHigh = { price: ev.price, pivotIdx: ev.pivotIdx }
+        result.highClass[t] = ev.cls
+      } else {
+        activeLow = { price: ev.price, pivotIdx: ev.pivotIdx }
+        result.lowClass[t] = ev.cls
+      }
+      eventPtr++
+    }
+
+    result.swingHighLevel[t] = activeHigh ? activeHigh.price : null
+    result.swingLowLevel[t] = activeLow ? activeLow.price : null
+    result.bias[t] = bias === 'bull' ? 1 : bias === 'bear' ? -1 : null
+
+    const highStale = activeHigh != null && t - activeHigh.pivotIdx > maxAgeBars
+    const lowStale = activeLow != null && t - activeLow.pivotIdx > maxAgeBars
+
+    if (activeHigh && !highStale && closes[t] > activeHigh.price) {
+      if (bias === 'bull') result.bosBull[t] = 1
+      else if (bias === 'bear') { result.chochBull[t] = 1; bias = 'bull' }
+      else bias = 'bull' // warm-up: first break establishes bias, unlabeled
+      activeHigh = null // consumed — won't re-trigger every bar past this level
+    } else if (activeLow && !lowStale && closes[t] < activeLow.price) {
+      if (bias === 'bear') result.bosBear[t] = 1
+      else if (bias === 'bull') { result.chochBear[t] = 1; bias = 'bear' }
+      else bias = 'bear'
+      activeLow = null
+    }
+  }
+
+  return result
+}
+
 export type ComputedSeries = Record<string, Series>
 
 /** Computes every indicator series over the FULL candle array. This is safe
@@ -218,6 +346,24 @@ export function calculateIndicators(candles: Candle[], indicators: IndicatorConf
       case 'VWAP':
         computed[ind.id] = vwap(highs, lows, closes, volumes)
         break
+      case 'MARKET_STRUCTURE': {
+        // `period` doubles as swingWidth here (BB reuses its own `period`/
+        // `stdDev` fields the same way) — a strategy's condition config
+        // reacts to these as 0/1-ish event series via above_value/below_value
+        // against 0.5, e.g. { type: 'above_value', a: 'ms_bos_bull', value: 0.5 }
+        // fires exactly on the bar a bullish BOS confirms.
+        const ms = computeMarketStructure(closes, ind.period ?? 2)
+        computed[`${ind.id}_bos_bull`] = ms.bosBull
+        computed[`${ind.id}_bos_bear`] = ms.bosBear
+        computed[`${ind.id}_choch_bull`] = ms.chochBull
+        computed[`${ind.id}_choch_bear`] = ms.chochBear
+        computed[`${ind.id}_swing_high`] = ms.swingHighLevel
+        computed[`${ind.id}_swing_low`] = ms.swingLowLevel
+        computed[`${ind.id}_high_class`] = ms.highClass
+        computed[`${ind.id}_low_class`] = ms.lowClass
+        computed[`${ind.id}_bias`] = ms.bias
+        break
+      }
       default:
         break
     }

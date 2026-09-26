@@ -3,7 +3,7 @@ import { AssetClassSchema } from './candle'
 
 export const IndicatorConfigSchema = z.object({
   id: z.string().min(1),
-  type: z.enum(['EMA', 'SMA', 'RSI', 'MACD', 'BB', 'ATR', 'VWAP']),
+  type: z.enum(['EMA', 'SMA', 'RSI', 'MACD', 'BB', 'ATR', 'VWAP', 'MARKET_STRUCTURE']),
   period: z.number().int().positive().optional(),
   fast: z.number().int().positive().optional(),
   slow: z.number().int().positive().optional(),
