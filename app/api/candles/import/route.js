@@ -70,6 +70,35 @@ export async function POST(request) {
   }
 }
 
+// Trims cached candles older than a cutoff for one symbol/timeframe — used
+// to free space under a database storage cap (e.g. Neon's free-tier 512MB
+// limit) by shrinking how far back 1-minute history goes for symbols
+// already backfilled, rather than losing the whole dataset. Requires an
+// explicit beforeTime rather than a vague "keep last N days" default: this
+// is a real, non-reversible delete, and the caller should know exactly what
+// cutoff it's computing.
+export async function DELETE(request) {
+  const { searchParams } = new URL(request.url)
+  const symbol = searchParams.get('symbol')
+  const timeframe = searchParams.get('timeframe')
+  const beforeTime = Number(searchParams.get('beforeTime'))
+
+  if (!symbol || !timeframe) {
+    return NextResponse.json({ error: 'symbol and timeframe are required' }, { status: 400 })
+  }
+  if (!Number.isFinite(beforeTime)) {
+    return NextResponse.json({ error: 'beforeTime (unix seconds) is required' }, { status: 400 })
+  }
+
+  try {
+    const result = await prisma.candle.deleteMany({ where: { symbol, timeframe, time: { lt: beforeTime } } })
+    return NextResponse.json({ symbol, timeframe, beforeTime, deleted: result.count })
+  } catch (err) {
+    console.error('candles trim error:', err.message)
+    return NextResponse.json({ error: err.message }, { status: 500 })
+  }
+}
+
 // Lets the import page show what's already cached for a symbol before
 // uploading, and lets /api/historical check candle-count/date-range quickly.
 export async function GET(request) {
