@@ -7,6 +7,7 @@ export const IndicatorConfigSchema = z.object({
     'EMA', 'SMA', 'RSI', 'MACD', 'BB', 'ATR', 'VWAP', 'MARKET_STRUCTURE',
     'LIQUIDITY_SWEEP', 'FVG', 'ORDER_BLOCK', 'IMBALANCE', 'LIQUIDITY_VOID',
     'PREMIUM_DISCOUNT', 'BREAKOUT_RETEST', 'ORB', 'SR_PRICE_ACTION',
+    'DONCHIAN', 'HULL_MA',
   ]),
   period: z.number().int().positive().optional(),
   fast: z.number().int().positive().optional(),

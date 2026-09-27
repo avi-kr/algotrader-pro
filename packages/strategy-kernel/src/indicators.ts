@@ -141,6 +141,116 @@ export function vwap(highs: number[], lows: number[], closes: number[], volumes:
   return result
 }
 
+function wmaNumeric(data: number[], period: number): Series {
+  const n = data.length
+  const result: Series = new Array(n).fill(null)
+  if (period <= 0) return result
+  const denom = (period * (period + 1)) / 2
+  for (let i = period - 1; i < n; i++) {
+    let sum = 0
+    for (let k = 0; k < period; k++) sum += data[i - k] * (period - k)
+    result[i] = sum / denom
+  }
+  return result
+}
+
+function wmaOfSeries(data: Series, period: number): Series {
+  const n = data.length
+  const result: Series = new Array(n).fill(null)
+  if (period <= 0) return result
+  const denom = (period * (period + 1)) / 2
+  for (let i = period - 1; i < n; i++) {
+    let sum = 0
+    let ok = true
+    for (let k = 0; k < period; k++) {
+      const v = data[i - k]
+      if (v == null) { ok = false; break }
+      sum += v * (period - k)
+    }
+    if (ok) result[i] = sum / denom
+  }
+  return result
+}
+
+/** Hull Moving Average: HMA(n) = WMA(2*WMA(price, n/2) - WMA(price, n), round(sqrt(n))).
+ * Standard formula, unchanged from the classic definition. */
+export function hma(closes: number[], period: number): Series {
+  const halfPeriod = Math.max(1, Math.round(period / 2))
+  const sqrtPeriod = Math.max(1, Math.round(Math.sqrt(period)))
+  const wmaHalf = wmaNumeric(closes, halfPeriod)
+  const wmaFull = wmaNumeric(closes, period)
+  const raw: Series = closes.map((_, i) => {
+    if (wmaHalf[i] == null || wmaFull[i] == null) return null
+    return 2 * (wmaHalf[i] as number) - (wmaFull[i] as number)
+  })
+  return wmaOfSeries(raw, sqrtPeriod)
+}
+
+/** Hull Suite: the popular TradingView indicator's own convention — color
+ * (trend) is bullish when the HMA sits above its own value 2 bars back,
+ * bearish otherwise. A "switch"/flip event fires exactly on the bar this
+ * comparison changes sign, not on every bar of the same color. */
+export interface HullSuiteResult {
+  hma: Series
+  bullFlip: Series
+  bearFlip: Series
+}
+
+export function computeHullSuite(closes: number[], period = 55): HullSuiteResult {
+  const h = hma(closes, period)
+  const n = closes.length
+  const result: HullSuiteResult = { hma: h, bullFlip: new Array(n).fill(null), bearFlip: new Array(n).fill(null) }
+  let prevBullish: boolean | null = null
+  for (let i = 2; i < n; i++) {
+    if (h[i] == null || h[i - 2] == null) continue
+    const bullish = (h[i] as number) > (h[i - 2] as number)
+    if (prevBullish != null) {
+      if (bullish && !prevBullish) result.bullFlip[i] = 1
+      if (!bullish && prevBullish) result.bearFlip[i] = 1
+    }
+    prevBullish = bullish
+  }
+  return result
+}
+
+/** Rolling High/Low breakout (Donchian-style): highest/lowest over the
+ * PRIOR `period` bars, excluding the current bar (so "today's close breaks
+ * the prior N-bar high" is meaningful rather than trivially true of every
+ * bar's own extreme). `period <= 0` means an EXPANDING, all-time window
+ * from the very first available bar up to (but not including) the current
+ * one — used for the "All-Time High/Low" variant. */
+export interface RollingExtremeResult {
+  highest: Series
+  lowest: Series
+  breakoutHigh: Series
+  breakoutLow: Series
+}
+
+export function computeRollingExtreme(candles: Candle[], period = 0): RollingExtremeResult {
+  const n = candles.length
+  const result: RollingExtremeResult = {
+    highest: new Array(n).fill(null),
+    lowest: new Array(n).fill(null),
+    breakoutHigh: new Array(n).fill(null),
+    breakoutLow: new Array(n).fill(null),
+  }
+  for (let i = 1; i < n; i++) {
+    const start = period > 0 ? Math.max(0, i - period) : 0
+    let hi = -Infinity
+    let lo = Infinity
+    for (let k = start; k < i; k++) {
+      if (candles[k].high > hi) hi = candles[k].high
+      if (candles[k].low < lo) lo = candles[k].low
+    }
+    if (hi === -Infinity) continue
+    result.highest[i] = hi
+    result.lowest[i] = lo
+    if (candles[i].close > hi) result.breakoutHigh[i] = 1
+    if (candles[i].close < lo) result.breakoutLow[i] = 1
+  }
+  return result
+}
+
 export function crossover(a: Series, b: Series, i: number): boolean {
   if (i === 0) return false
   return (
@@ -440,6 +550,25 @@ export function calculateIndicators(candles: Candle[], indicators: IndicatorConf
         const sr = computeSRPriceAction(candles, ind.period ?? 2, ind.bodyRatio ?? 2)
         computed[`${ind.id}_bull`] = sr.bullEntry
         computed[`${ind.id}_bear`] = sr.bearEntry
+        break
+      }
+      case 'DONCHIAN': {
+        // `period` omitted (or 0) means an expanding, all-time window —
+        // used for the All-Time High/Low breakout variant. A positive
+        // period is a fixed rolling lookback in bars (e.g. 252 for a
+        // 52-week high/low on daily candles).
+        const re = computeRollingExtreme(candles, ind.period ?? 0)
+        computed[`${ind.id}_highest`] = re.highest
+        computed[`${ind.id}_lowest`] = re.lowest
+        computed[`${ind.id}_breakout_high`] = re.breakoutHigh
+        computed[`${ind.id}_breakout_low`] = re.breakoutLow
+        break
+      }
+      case 'HULL_MA': {
+        const hs = computeHullSuite(closes, ind.period ?? 55)
+        computed[ind.id] = hs.hma
+        computed[`${ind.id}_bull_flip`] = hs.bullFlip
+        computed[`${ind.id}_bear_flip`] = hs.bearFlip
         break
       }
       default:
