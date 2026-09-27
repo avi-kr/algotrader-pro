@@ -183,7 +183,14 @@ v2's own docs before writing any code; nothing here is a guess.
   generate once via web.dhan.co, and `DhanBrokerAdapter.renewToken()` (GET
   `/v2/RenewToken`) extends an *already-active* token — call it periodically
   from a long-running engine process. A restart after >24h down needs a
-  freshly generated token.
+  freshly generated token. It goes in the **repo-root `.env`** alongside
+  `DATABASE_URL` etc. — not a separate `engine/.env` — since a standalone
+  Node script has no built-in `.env` loading the way `next dev`/`next build`
+  do; `engine/scripts/backfill-dhan-history.ts` loads the root `.env`
+  explicitly (resolved relative to the script's own file, so it works
+  regardless of the invoking shell's working directory). A future `engine/`
+  `main()` loop should follow the same pattern rather than inventing a
+  second env file.
 - **Paper trading**: Dhan's own Sandbox exists but fills every order at a
   flat price of 100 with no live quotes — unusable for a realistic paper
   track record. `createBrokerAdapter` routes `in_equity` paper mode through

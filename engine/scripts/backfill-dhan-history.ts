@@ -12,12 +12,24 @@
 //   npm run backfill:dhan -- --symbols-file=./symbols.json --years=3 --timeframe=1m
 //
 // symbols.json is a plain JSON array of strings, e.g. ["RELIANCE.NS", "TCS.NS"].
-// Requires DHAN_CLIENT_ID / DHAN_ACCESS_TOKEN in the environment.
+// Requires DHAN_CLIENT_ID / DHAN_ACCESS_TOKEN / DATABASE_URL — read from the
+// REPO ROOT .env (the same one you already have for DATABASE_URL etc.), not
+// a separate engine/.env: a standalone Node script has no built-in .env
+// loading the way `next dev`/`next build` do, so this script loads it
+// explicitly, resolved relative to this file (not process.cwd()) so it
+// works whether you run it from the repo root or from inside engine/.
 
 import { readFileSync } from 'node:fs'
-import { prisma } from '@algotrader/db'
-import type { Timeframe } from '@algotrader/shared-types'
-import { DhanMarketDataAdapter } from '../src/market-data/dhan'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { config as loadEnv } from 'dotenv'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+loadEnv({ path: path.resolve(__dirname, '../../.env') })
+
+const { prisma } = await import('@algotrader/db')
+const { DhanMarketDataAdapter } = await import('../src/market-data/dhan')
+type Timeframe = import('@algotrader/shared-types').Timeframe
 
 function parseArgs(argv: string[]): Record<string, string> {
   const out: Record<string, string> = {}

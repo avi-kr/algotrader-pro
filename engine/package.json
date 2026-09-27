@@ -12,7 +12,8 @@
   "dependencies": {
     "@algotrader/db": "*",
     "@algotrader/shared-types": "*",
-    "@algotrader/strategy-kernel": "*"
+    "@algotrader/strategy-kernel": "*",
+    "dotenv": "^16.4.5"
   },
   "devDependencies": {
     "@types/node": "^22.5.4",
