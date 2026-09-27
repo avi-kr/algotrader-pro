@@ -84,7 +84,11 @@ other directly or on a specific broker SDK.
   the no-look-ahead guarantee applies uniformly:
   - Classic: EMA, SMA, RSI, MACD, Bollinger Bands, ATR, VWAP, Hull Moving
     Average (`HULL_MA`), rolling High/Low breakout (`DONCHIAN` — fixed
-    lookback or an expanding all-time window when `period` is omitted).
+    lookback or an expanding all-time window when `period` is omitted),
+    Supertrend, Keltner Channel, Stochastic Oscillator, Parabolic SAR, CCI,
+    and an Ichimoku Tenkan/Kijun cross (`moreIndicators.ts` — the full
+    5-line Ichimoku cloud is deliberately out of scope, just the TK cross
+    signal retail systems actually automate).
   - Market Structure (`MARKET_STRUCTURE`, `smc.ts`) — deterministic,
     close-price swing highs/lows (confirmed N bars after forming, never
     exposed before their own confirmation bar), HH/LH/HL/LL
@@ -95,9 +99,15 @@ other directly or on a specific broker SDK.
     states on the same block, not separate detectors), `IMBALANCE`,
     `LIQUIDITY_VOID`, `PREMIUM_DISCOUNT`, `BREAKOUT_RETEST`, `ORB`,
     `SR_PRICE_ACTION`.
-  - Every one of these has hand-traced Vitest coverage (46 tests total in
+  - Every one of these has hand-traced Vitest coverage (54 tests total in
     the kernel) — several catch the exact class of bug a chart bug did:
-    values leaking before their true confirmation bar.
+    values leaking before their true confirmation bar. The Supertrend
+    initial-trend seed is a case in point: an early version guessed the
+    starting trend by comparing price to its own basicLower band, which is
+    constructed to sit below price by design — so the guess was "bullish"
+    almost regardless of actual direction, producing a spurious flip one
+    bar after warmup in genuine downtrends. Fixed by seeding off real
+    price movement (current close vs. close one ATR-period back) instead.
   - `TradingChart.js` draws Market Structure's HH/LH/HL/LL, BOS/CHoCH, and
     active support/resistance levels directly on the candles; the newer
     SMC concepts (FVG zones, Order Block zones, etc.) compute correctly

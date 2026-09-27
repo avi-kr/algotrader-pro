@@ -4,6 +4,10 @@ import {
   computeLiquidityVoid, computePremiumDiscount, computeBreakoutRetest,
   computeORB, computeSRPriceAction,
 } from './smc'
+import {
+  computeSupertrend, computeKeltner, computeStochastic, computeParabolicSar,
+  computeCci, computeIchimokuTK,
+} from './moreIndicators'
 
 export type Series = Array<number | null>
 
@@ -577,6 +581,60 @@ export function calculateIndicators(candles: Candle[], indicators: IndicatorConf
         computed[ind.id] = hs.hma
         computed[`${ind.id}_bull_flip`] = hs.bullFlip
         computed[`${ind.id}_bear_flip`] = hs.bearFlip
+        break
+      }
+      case 'SUPERTREND': {
+        // period = ATR period (default 10), atrMultiple = band multiplier
+        // (default 3) — the standard Supertrend(10,3) parameterization.
+        const st = computeSupertrend(candles, ind.period ?? 10, ind.atrMultiple ?? 3)
+        computed[ind.id] = st.value
+        computed[`${ind.id}_bull_flip`] = st.bullFlip
+        computed[`${ind.id}_bear_flip`] = st.bearFlip
+        break
+      }
+      case 'KELTNER': {
+        // period = EMA period (default 20), lookback = ATR period (default
+        // 10), atrMultiple = band multiplier (default 2). Exposed as plain
+        // upper/middle/lower series — a strategy reacts via crossover/
+        // crossunder against `close`, same as BB.
+        const kc = computeKeltner(candles, ind.period ?? 20, ind.lookback ?? 10, ind.atrMultiple ?? 2)
+        computed[`${ind.id}_upper`] = kc.upper
+        computed[`${ind.id}_middle`] = kc.middle
+        computed[`${ind.id}_lower`] = kc.lower
+        computed[ind.id] = kc.middle
+        break
+      }
+      case 'STOCHASTIC': {
+        // period = %K lookback (default 14), fast = %K smoothing (default
+        // 3), slow = %D smoothing (default 3) — reusing MACD's fast/slow
+        // fields since both represent short smoothing windows here.
+        const st = computeStochastic(candles, ind.period ?? 14, ind.fast ?? 3, ind.slow ?? 3)
+        computed[`${ind.id}_k`] = st.k
+        computed[`${ind.id}_d`] = st.d
+        computed[ind.id] = st.k
+        break
+      }
+      case 'PARABOLIC_SAR': {
+        // atrMultiple = AF step (default 0.02), zonePct = AF cap (default
+        // 0.2) — reusing these decimal-fraction fields rather than adding
+        // SAR-only ones, since both are already small positive multipliers.
+        const sar = computeParabolicSar(candles, ind.atrMultiple ?? 0.02, ind.zonePct ?? 0.2)
+        computed[ind.id] = sar.value
+        computed[`${ind.id}_bull_flip`] = sar.bullFlip
+        computed[`${ind.id}_bear_flip`] = sar.bearFlip
+        break
+      }
+      case 'CCI':
+        computed[ind.id] = computeCci(candles, ind.period ?? 20)
+        break
+      case 'ICHIMOKU_TK': {
+        // period = Tenkan-sen period (default 9), slow = Kijun-sen period
+        // (default 26) — the standard TK-cross pair. Exposed as two plain
+        // series; a strategy reacts via crossover/crossunder between them.
+        const ich = computeIchimokuTK(candles, ind.period ?? 9, ind.slow ?? 26)
+        computed[`${ind.id}_tenkan`] = ich.tenkan
+        computed[`${ind.id}_kijun`] = ich.kijun
+        computed[ind.id] = ich.tenkan
         break
       }
       default:
