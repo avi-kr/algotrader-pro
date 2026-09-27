@@ -198,17 +198,26 @@ v2's own docs before writing any code; nothing here is a guess.
   `DhanMarketDataAdapter`'s real prices; only live mode talks to the real
   `DhanBrokerAdapter`, gated behind `LIVE_TRADING_ENABLED` exactly like
   Alpaca (CLAUDE.md non-negotiable #1).
-- **3-year historical backfill**: `engine/scripts/backfill-dhan-history.ts`
-  (`npm run backfill:dhan --workspace=@algotrader/engine -- --symbols=RELIANCE.NS,TCS.NS --years=3 --timeframe=1m`)
-  is a standalone script, not a Vercel route — a 3-year 1-minute backfill
-  across many symbols means hundreds of paginated requests, well past a
-  serverless function's execution time limit. It writes into the same
-  `Candle` table `/api/candles/import` uses (`skipDuplicates`, so it's safe
-  to re-run), so `/api/historical` serves the result ahead of any live
-  fetch. This is the "use the SDK/API directly" path; the existing
-  `/data-import` CSV upload page remains the "I already have the export on
-  my laptop" path — both land in the same table, so nothing downstream
-  cares which one filled it.
+- **3-year historical backfill — two ways in**:
+  - **`app/api/dhan/backfill/route.js`** — the one actually meant to be used:
+    a Vercel API route (imports `DhanMarketDataAdapter` from
+    `@algotrader/engine` directly), triggered from a browser-console script
+    the same way every strategy in this app was created. Vercel has normal
+    internet egress and already holds the deployment's real production
+    `DATABASE_URL` — a local machine or sandboxed dev container may have
+    neither (network policy blocking `*.dhan.co`, or a `.env` still pointed
+    at a local dev database nobody else can see). One call = one Dhan
+    request's worth of data (the full range for daily/weekly, a single
+    caller-chunked ≤90-day window for intraday); the browser script chunks
+    a 3-year intraday backfill into windows itself and calls this once per
+    window per symbol, logging progress, safe to re-run (`skipDuplicates`).
+  - **`engine/scripts/backfill-dhan-history.ts`** — a standalone script for
+    when `engine/` itself is running somewhere with real network access and
+    a real `DATABASE_URL` (e.g. once it has an actual deployed host and
+    `main()` loop) — not useful before then.
+  - Both write into the same `Candle` table `/api/candles/import`'s CSV
+    upload uses, so `/api/historical` serves the result ahead of any live
+    fetch regardless of which path filled it.
 
 ## What's scaffolded but NOT verified end-to-end
 

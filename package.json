@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@algotrader/db": "*",
+    "@algotrader/engine": "*",
     "@algotrader/shared-types": "*",
     "@algotrader/strategy-kernel": "*",
     "clsx": "^2.1.1",
