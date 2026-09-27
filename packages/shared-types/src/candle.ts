@@ -14,7 +14,7 @@ export const CandleSchema = z.object({
 })
 export type Candle = z.infer<typeof CandleSchema>
 
-export const AssetClassSchema = z.enum(['us_equity', 'crypto'])
+export const AssetClassSchema = z.enum(['us_equity', 'crypto', 'in_equity'])
 export type AssetClass = z.infer<typeof AssetClassSchema>
 
 export const TimeframeSchema = z.enum(['1m', '5m', '15m', '1h', '4h', '1d', '1wk'])

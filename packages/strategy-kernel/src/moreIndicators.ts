@@ -65,7 +65,7 @@ export function computeSupertrend(candles: Candle[], atrPeriod = 10, multiplier 
     finalUpper = basicUpper < finalUpper || prevClose > finalUpper ? basicUpper : finalUpper
     finalLower = basicLower > finalLower || prevClose < finalLower ? basicLower : finalLower
 
-    const wasBullish = trendBullish
+    const wasBullish: boolean | null = trendBullish
     if (trendBullish) {
       if (closes[i] < finalLower) trendBullish = false
     } else {

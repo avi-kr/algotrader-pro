@@ -68,9 +68,11 @@ other directly or on a specific broker SDK.
   switch, max position size, max daily loss, max per-symbol exposure. It's
   wired into `OrderManager.placeOrder` so an order can't reach a broker
   without passing every check.
-- **Broker/market-data adapter code** — written against Alpaca's and
-  Binance's real documented APIs (`engine/src/broker-adapters`,
+- **Broker/market-data adapter code** — written against Alpaca's, Binance's,
+  and Dhan's real documented APIs (`engine/src/broker-adapters`,
   `engine/src/market-data`), unit-tested against mocked HTTP.
+- **Dhan (NSE equities — `in_equity` asset class)** — see the dedicated
+  section below.
 - **Historical market data** — Yahoo Finance for US/Indian equities,
   Coinbase Exchange for crypto (`app/api/historical/route.js`; switched
   from Binance, which returns HTTP 451 for requests originating from the
@@ -126,6 +128,81 @@ other directly or on a specific broker SDK.
     not a fixed daily-return constant — comparing a 1D strategy against
     a 1H one no longer silently favors whichever trades less often.
 
+## Dhan (NSE equity paper/live trading)
+
+Dhan is the broker for the `in_equity` asset class — Indian equities, keyed
+by numeric `securityId` rather than by symbol. Researched against DhanHQ API
+v2's own docs before writing any code; nothing here is a guess.
+
+- **`engine/src/market-data/dhan-instruments.ts`** — Dhan has no
+  symbol-string API. This module fetches and caches Dhan's published
+  instrument-master CSV in memory, filters it to NSE cash equity, and maps
+  this codebase's existing Yahoo-style tickers (`RELIANCE.NS`, as used
+  throughout `lib/constants.js`) onto `(securityId, exchangeSegment)`. It
+  throws rather than guessing when a symbol isn't found — a wrong
+  `securityId` is a real-money mistake, not a display bug.
+- **`engine/src/broker-adapters/dhan.ts`** (`DhanBrokerAdapter`) — orders,
+  cancellation, status, positions, and account equity against Dhan's REST
+  API. Two things make it meaningfully different from `AlpacaBrokerAdapter`:
+  - Dhan's `correlationId` is a user-defined *lookup tag*, not a
+    server-enforced idempotency key the way Alpaca's `client_order_id` is —
+    submitting the same one twice creates two separate orders. The adapter
+    closes this gap itself: before submitting, it checks
+    `GET /orders/external/{correlationId}` and returns the existing order if
+    one is already there, so a caller retrying after a network failure can't
+    double-submit (platform-engineer.md rule #3).
+  - Order placement/modification/cancellation require a **static IP**
+    whitelisted on the Dhan account (a SEBI requirement) — register the box
+    running `engine/` at web.dhan.co or via `POST /v2/ip/setIP` before going
+    live. A non-whitelisted IP fails with Dhan error `DH-905`; this adapter
+    doesn't special-case it, it just surfaces as an ordinary thrown error.
+    Fetching orders/trades/positions does not need this.
+- **`engine/src/market-data/dhan.ts`** (`DhanMarketDataAdapter`) —
+  - `getHistoricalCandles`: `/charts/historical` for daily/weekly (weekly is
+    real ISO-calendar-week aggregation of daily bars, not a fixed 7-count
+    grouping, since NSE trading weeks have holidays), `/charts/intraday`
+    (1/5/15/60-min) paginated in 89-day windows since Dhan caps a single
+    request at 90 days. `4h` has no native Dhan interval and is built by
+    aggregating four real 60-minute candles (true high/low/summed volume,
+    the same non-synthetic aggregation already used for crypto in
+    `app/api/historical/route.js`).
+  - `subscribeLive`: Dhan's WebSocket streams individual ticks (LTP +
+    cumulative day volume), not pre-formed candles the way Binance's kline
+    stream does — this adapter aggregates ticks into 1-minute candles itself,
+    only ever emitting one once its minute has fully elapsed. `parseDhanFeedPacket`
+    is a standalone, unit-tested parser for the documented little-endian
+    binary packet layout (Ticker/code 2, Quote/code 4 — Full/depth and
+    OI/PrevClose packets are intentionally not parsed, since price is all
+    candle aggregation needs). Structurally complete against the documented
+    spec but — like `BinanceMarketDataAdapter`'s WS code — not yet exercised
+    against Dhan's real feed; that needs the user's own access token.
+- **Auth**: an access token is valid 24h. This app deliberately does **not**
+  automate minting a brand-new one — that requires either an interactive
+  browser login or the account's trading PIN + TOTP, a bigger secret than
+  this app should ever hold. Instead, `DHAN_ACCESS_TOKEN` is a token you
+  generate once via web.dhan.co, and `DhanBrokerAdapter.renewToken()` (GET
+  `/v2/RenewToken`) extends an *already-active* token — call it periodically
+  from a long-running engine process. A restart after >24h down needs a
+  freshly generated token.
+- **Paper trading**: Dhan's own Sandbox exists but fills every order at a
+  flat price of 100 with no live quotes — unusable for a realistic paper
+  track record. `createBrokerAdapter` routes `in_equity` paper mode through
+  the same `SimulatedPaperAdapter` crypto already uses, fed by
+  `DhanMarketDataAdapter`'s real prices; only live mode talks to the real
+  `DhanBrokerAdapter`, gated behind `LIVE_TRADING_ENABLED` exactly like
+  Alpaca (CLAUDE.md non-negotiable #1).
+- **3-year historical backfill**: `engine/scripts/backfill-dhan-history.ts`
+  (`npm run backfill:dhan --workspace=@algotrader/engine -- --symbols=RELIANCE.NS,TCS.NS --years=3 --timeframe=1m`)
+  is a standalone script, not a Vercel route — a 3-year 1-minute backfill
+  across many symbols means hundreds of paginated requests, well past a
+  serverless function's execution time limit. It writes into the same
+  `Candle` table `/api/candles/import` uses (`skipDuplicates`, so it's safe
+  to re-run), so `/api/historical` serves the result ahead of any live
+  fetch. This is the "use the SDK/API directly" path; the existing
+  `/data-import` CSV upload page remains the "I already have the export on
+  my laptop" path — both land in the same table, so nothing downstream
+  cares which one filled it.
+
 ## What's scaffolded but NOT verified end-to-end
 
 Nothing in this session could call a real broker or exchange — that needs the
@@ -140,16 +217,28 @@ user's own API keys. Specifically still open:
 2. **Crypto paper trading** — `SimulatedPaperAdapter` fills against whatever
    price `getLastPrice` returns; wiring that to `BinanceMarketDataAdapter`'s
    live stream so paper crypto trades use real-time prices is not done.
-3. **The always-on trading loop** — `engine/src/index.ts` exports the
+3. **Dhan paper/live trading** — `DhanBrokerAdapter`, `DhanMarketDataAdapter`,
+   and the instrument-master lookup are written against Dhan's documented
+   API v2 and unit-tested with a mocked `fetch`, but have never made a real
+   request or opened a real WebSocket connection. Needs, in order: (1) a
+   `DHAN_ACCESS_TOKEN` generated via web.dhan.co, (2) the engine's outbound
+   IP registered as static and whitelisted on the Dhan account before any
+   live order (paper mode doesn't need this — it never calls Dhan's order
+   API at all), (3) one `getHistoricalCandles` call against a real symbol to
+   confirm the instrument-master CSV parse and chart-endpoint pagination
+   actually match production data, (4) one real WebSocket connection to
+   confirm the binary packet layout this adapter assumes from the docs is
+   what Dhan's feed actually sends.
+4. **The always-on trading loop** — `engine/src/index.ts` exports the
    building blocks (market data → strategy kernel → risk → OMS → portfolio)
    but does not start a `main()` loop. Shipping an unverified always-on loop
    against a real account would violate the QA rule that untested code isn't
    done.
-4. **Live trading** — gated behind `LIVE_TRADING_ENABLED` (defaults to
+5. **Live trading** — gated behind `LIVE_TRADING_ENABLED` (defaults to
    `false` everywhere, see `.env.example`) and, per `CLAUDE.md`, a documented
    paper-trading track record plus human sign-off. Not reachable by any
    current code path.
-5. **DB-level audit immutability** — `AuditEvent` is append-only by
+6. **DB-level audit immutability** — `AuditEvent` is append-only by
    *application* convention (`AuditLog` only exposes `record`). Enforcing it
    at the database level means creating a restricted Postgres role for the
    app that has `INSERT` but not `UPDATE`/`DELETE` on `audit_events`, and
