@@ -174,7 +174,7 @@ function BacktestInner() {
     try {
       // Server-side: runs through packages/strategy-kernel (the same code
       // path paper/live trading will use) and persists a BacktestRun.
-      const res = await fetch('/api/backtest', {
+      const response = await fetch('/api/backtest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -187,9 +187,20 @@ function BacktestInner() {
           positionSizePct: parseFloat(positionSize),
           commissionPct: parseFloat(commission),
         }),
-      }).then(r => r.json())
+      })
 
-      if (res.error) throw new Error(res.error)
+      // A non-2xx response can come back with no body at all (a platform-level
+      // timeout or size-limit rejection never reaches our route's own JSON
+      // error handling) — parsing that as JSON is what produced the opaque
+      // "Unexpected end of JSON input" instead of a real error message.
+      const text = await response.text()
+      let res
+      try {
+        res = text ? JSON.parse(text) : {}
+      } catch {
+        throw new Error(`Server returned a non-JSON response (HTTP ${response.status}). This usually means the request timed out or the payload was too large — try a shorter date range.`)
+      }
+      if (!response.ok || res.error) throw new Error(res.error || `HTTP ${response.status}`)
       setResult(res)
 
       // Build trade overlays for chart
