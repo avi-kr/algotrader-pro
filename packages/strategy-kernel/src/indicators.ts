@@ -468,6 +468,14 @@ export function calculateIndicators(candles: Candle[], indicators: IndicatorConf
         // against 0.5, e.g. { type: 'above_value', a: 'ms_bos_bull', value: 0.5 }
         // fires exactly on the bar a bullish BOS confirms.
         const ms = computeMarketStructure(closes, ind.period ?? 2)
+        // Every other indicator type aliases its bare id to a primary
+        // series (BB -> middle band) so callers that just check
+        // `computed[def.id]` for existence (e.g. the chart's per-indicator
+        // render guard) don't skip it — without this, MARKET_STRUCTURE-based
+        // chart overlays would silently never draw, even though the
+        // suffixed series backtests already read (ms_bos_bull etc.) work
+        // fine regardless.
+        computed[ind.id] = ms.bias
         computed[`${ind.id}_bos_bull`] = ms.bosBull
         computed[`${ind.id}_bos_bear`] = ms.bosBear
         computed[`${ind.id}_choch_bull`] = ms.chochBull

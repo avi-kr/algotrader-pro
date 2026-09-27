@@ -76,6 +76,7 @@ export default function TradingChart({
     seriesRef.current.candle = candleSeries
 
     // Add indicator overlays (EMA, SMA on main chart)
+    const structureMarkers = []
     for (const def of indicatorDefs) {
       const vals = indicators[def.id]
       if (!vals || !vals.length) continue
@@ -115,19 +116,60 @@ export default function TradingChart({
           }
         }
       }
+
+      if (def.type === 'MARKET_STRUCTURE') {
+        const swingHigh = indicators[`${def.id}_swing_high`]
+        const swingLow = indicators[`${def.id}_swing_low`]
+        const highClass = indicators[`${def.id}_high_class`]
+        const lowClass = indicators[`${def.id}_low_class`]
+        const bosBull = indicators[`${def.id}_bos_bull`]
+        const bosBear = indicators[`${def.id}_bos_bear`]
+        const chochBull = indicators[`${def.id}_choch_bull`]
+        const chochBear = indicators[`${def.id}_choch_bear`]
+
+        // Active swing high/low as support/resistance rays — the same
+        // series a strategy's stop-loss/entry conditions already read.
+        if (swingHigh) {
+          const resSeries = chart.addLineSeries({ color: '#FF4560', lineWidth: 1, lineStyle: LineStyle.Dotted, lastValueVisible: false, priceLineVisible: false, title: 'Resistance' })
+          resSeries.setData(sortedCandles.map((c, i) => ({ time: c.time, value: swingHigh[i] })).filter(d => d.value != null))
+        }
+        if (swingLow) {
+          const supSeries = chart.addLineSeries({ color: '#00E5A0', lineWidth: 1, lineStyle: LineStyle.Dotted, lastValueVisible: false, priceLineVisible: false, title: 'Support' })
+          supSeries.setData(sortedCandles.map((c, i) => ({ time: c.time, value: swingLow[i] })).filter(d => d.value != null))
+        }
+
+        // HH/LH/HL/LL and BOS/CHoCH labels — merged into the same marker
+        // array as trade overlays below (lightweight-charts' setMarkers
+        // replaces ALL markers on a series each call, so these can't be
+        // set independently without wiping the buy/sell arrows).
+        for (let i = 0; i < sortedCandles.length; i++) {
+          const time = sortedCandles[i].time
+          if (highClass && highClass[i] === 1) structureMarkers.push({ time, position: 'aboveBar', color: '#00E5A0', shape: 'circle', text: 'HH' })
+          if (highClass && highClass[i] === -1) structureMarkers.push({ time, position: 'aboveBar', color: '#FF4560', shape: 'circle', text: 'LH' })
+          if (lowClass && lowClass[i] === 1) structureMarkers.push({ time, position: 'belowBar', color: '#00E5A0', shape: 'circle', text: 'HL' })
+          if (lowClass && lowClass[i] === -1) structureMarkers.push({ time, position: 'belowBar', color: '#FF4560', shape: 'circle', text: 'LL' })
+          if (bosBull && bosBull[i] === 1) structureMarkers.push({ time, position: 'belowBar', color: '#00E5A0', shape: 'arrowUp', text: 'BOS' })
+          if (bosBear && bosBear[i] === 1) structureMarkers.push({ time, position: 'aboveBar', color: '#FF4560', shape: 'arrowDown', text: 'BOS' })
+          if (chochBull && chochBull[i] === 1) structureMarkers.push({ time, position: 'belowBar', color: '#00A3FF', shape: 'arrowUp', text: 'CHoCH' })
+          if (chochBear && chochBear[i] === 1) structureMarkers.push({ time, position: 'aboveBar', color: '#FFB800', shape: 'arrowDown', text: 'CHoCH' })
+        }
+      }
     }
 
-    // Trade markers (buy/sell)
-    if (overlays.length > 0) {
-      const markers = overlays.map(o => ({
-        time: o.time,
-        position: o.type === 'buy' ? 'belowBar' : 'aboveBar',
-        color: o.type === 'buy' ? '#00E5A0' : '#FF4560',
-        shape: o.type === 'buy' ? 'arrowUp' : 'arrowDown',
-        text: o.type === 'buy' ? 'B' : 'S',
-        size: 1.5,
-      }))
-      candleSeries.setMarkers(markers)
+    // Trade markers (buy/sell) — merged with any Market Structure labels
+    // collected above, since setMarkers replaces the whole marker set on
+    // a series rather than appending to it.
+    const tradeMarkers = overlays.map(o => ({
+      time: o.time,
+      position: o.type === 'buy' ? 'belowBar' : 'aboveBar',
+      color: o.type === 'buy' ? '#00E5A0' : '#FF4560',
+      shape: o.type === 'buy' ? 'arrowUp' : 'arrowDown',
+      text: o.type === 'buy' ? 'B' : 'S',
+      size: 1.5,
+    }))
+    const allMarkers = [...structureMarkers, ...tradeMarkers].sort((a, b) => a.time - b.time)
+    if (allMarkers.length > 0) {
+      candleSeries.setMarkers(allMarkers)
     }
 
     // Crosshair info
