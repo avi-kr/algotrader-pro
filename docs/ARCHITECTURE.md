@@ -71,6 +71,40 @@ other directly or on a specific broker SDK.
 - **Broker/market-data adapter code** — written against Alpaca's and
   Binance's real documented APIs (`engine/src/broker-adapters`,
   `engine/src/market-data`), unit-tested against mocked HTTP.
+- **Historical market data** — Yahoo Finance for US/Indian equities,
+  Coinbase Exchange for crypto (`app/api/historical/route.js`; switched
+  from Binance, which returns HTTP 451 for requests originating from the
+  US — Vercel's build region here). `/api/candles/import` +
+  `/data-import` let real owned data (e.g. broker-exported 1-minute NSE
+  candles) be cached in Postgres and served ahead of any live fetch,
+  since Yahoo's free API caps 1-minute data at 7 days of lookback.
+- **Strategy-kernel indicator library** (`packages/strategy-kernel/src`)
+  — every indicator type a `StrategyConfig` can reference, all wired
+  through the same causal `calculateIndicators`/`checkCondition` path so
+  the no-look-ahead guarantee applies uniformly:
+  - Classic: EMA, SMA, RSI, MACD, Bollinger Bands, ATR, VWAP, Hull Moving
+    Average (`HULL_MA`), rolling High/Low breakout (`DONCHIAN` — fixed
+    lookback or an expanding all-time window when `period` is omitted).
+  - Market Structure (`MARKET_STRUCTURE`, `smc.ts`) — deterministic,
+    close-price swing highs/lows (confirmed N bars after forming, never
+    exposed before their own confirmation bar), HH/LH/HL/LL
+    classification, Break of Structure (continuation) and Change of
+    Character (first reversal, flips bias).
+  - Built on Market Structure: `LIQUIDITY_SWEEP` (wick-based, deliberately
+    distinct from BOS/CHOCH), `FVG`, `ORDER_BLOCK` (Mitigation/Breaker are
+    states on the same block, not separate detectors), `IMBALANCE`,
+    `LIQUIDITY_VOID`, `PREMIUM_DISCOUNT`, `BREAKOUT_RETEST`, `ORB`,
+    `SR_PRICE_ACTION`.
+  - Every one of these has hand-traced Vitest coverage (46 tests total in
+    the kernel) — several catch the exact class of bug a chart bug did:
+    values leaking before their true confirmation bar.
+  - `TradingChart.js` draws Market Structure's HH/LH/HL/LL, BOS/CHoCH, and
+    active support/resistance levels directly on the candles; the newer
+    SMC concepts (FVG zones, Order Block zones, etc.) compute correctly
+    but don't have chart-visual rendering yet — backtest-only for now.
+  - Sharpe/Sortino annualize by the strategy's actual trades-per-year,
+    not a fixed daily-return constant — comparing a 1D strategy against
+    a 1H one no longer silently favors whichever trades less often.
 
 ## What's scaffolded but NOT verified end-to-end
 
