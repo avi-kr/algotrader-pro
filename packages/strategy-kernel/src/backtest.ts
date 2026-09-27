@@ -1,4 +1,4 @@
-import type { Candle, StopLoss, StrategyConfig, TakeProfit } from '@algotrader/shared-types'
+import type { AssetClass, Candle, StopLoss, StrategyConfig, TakeProfit } from '@algotrader/shared-types'
 import { calculateIndicators, checkConditions, atr as atrFn, type ComputedSeries, type Series } from './indicators'
 
 /**
@@ -38,8 +38,10 @@ export function computeStopLossPrice(params: {
  * position sized under one full coin round to exactly zero, silently
  * killing every trade a reasonably-sized crypto strategy would ever take.
  */
-export function computePositionQty(assetClass: 'us_equity' | 'crypto', positionCapital: number, entryPrice: number): number {
+export function computePositionQty(assetClass: AssetClass, positionCapital: number, entryPrice: number): number {
   const raw = positionCapital / entryPrice
+  // Both equity classes (US and Indian/NSE) trade in whole shares — only
+  // crypto allows fractional quantity.
   return assetClass === 'crypto' ? Math.floor(raw * 1e6) / 1e6 : Math.floor(raw)
 }
 

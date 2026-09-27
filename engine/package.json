@@ -6,7 +6,8 @@
   "main": "./src/index.ts",
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "backfill:dhan": "tsx scripts/backfill-dhan-history.ts"
   },
   "dependencies": {
     "@algotrader/db": "*",
@@ -15,6 +16,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.5.4",
+    "tsx": "^4.19.1",
     "typescript": "^5.5.4",
     "vitest": "^2.1.1"
   }
