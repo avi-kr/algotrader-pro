@@ -86,9 +86,19 @@ other directly or on a specific broker SDK.
     Average (`HULL_MA`), rolling High/Low breakout (`DONCHIAN` — fixed
     lookback or an expanding all-time window when `period` is omitted),
     Supertrend, Keltner Channel, Stochastic Oscillator, Parabolic SAR, CCI,
-    and an Ichimoku Tenkan/Kijun cross (`moreIndicators.ts` — the full
-    5-line Ichimoku cloud is deliberately out of scope, just the TK cross
-    signal retail systems actually automate).
+    an Ichimoku Tenkan/Kijun cross, ADX/+DI/-DI, Williams %R, On-Balance
+    Volume (with its own moving average), and the Money Flow Index
+    (`moreIndicators.ts` — the full 5-line Ichimoku cloud is deliberately
+    out of scope, just the TK cross signal retail systems actually
+    automate).
+  - `Condition` gained `crosses_above_value`/`crosses_below_value` (a
+    threshold-crossing EVENT, distinct from `above_value`/`below_value`'s
+    continuous STATE check) after building the Williams %R, MFI, and CCI
+    breakout strategies exposed exactly this gap: since entry conditions
+    only evaluate while flat, an `above_value` "oversold reversal" entry
+    fires on the first flat bar the series simply *happens* to already be
+    past the threshold, not on a genuine crossing — silently turning a
+    reversal strategy into an always-enter-unless-extended one.
   - Market Structure (`MARKET_STRUCTURE`, `smc.ts`) — deterministic,
     close-price swing highs/lows (confirmed N bars after forming, never
     exposed before their own confirmation bar), HH/LH/HL/LL
@@ -99,7 +109,7 @@ other directly or on a specific broker SDK.
     states on the same block, not separate detectors), `IMBALANCE`,
     `LIQUIDITY_VOID`, `PREMIUM_DISCOUNT`, `BREAKOUT_RETEST`, `ORB`,
     `SR_PRICE_ACTION`.
-  - Every one of these has hand-traced Vitest coverage (54 tests total in
+  - Every one of these has hand-traced Vitest coverage (60 tests total in
     the kernel) — several catch the exact class of bug a chart bug did:
     values leaking before their true confirmation bar. The Supertrend
     initial-trend seed is a case in point: an early version guessed the

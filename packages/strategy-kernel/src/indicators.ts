@@ -6,7 +6,7 @@ import {
 } from './smc'
 import {
   computeSupertrend, computeKeltner, computeStochastic, computeParabolicSar,
-  computeCci, computeIchimokuTK,
+  computeCci, computeIchimokuTK, computeAdx, computeWilliamsR, computeObv, computeMfi,
 } from './moreIndicators'
 
 export type Series = Array<number | null>
@@ -637,6 +637,29 @@ export function calculateIndicators(candles: Candle[], indicators: IndicatorConf
         computed[ind.id] = ich.tenkan
         break
       }
+      case 'ADX': {
+        const adxRes = computeAdx(candles, ind.period ?? 14)
+        computed[`${ind.id}_plus_di`] = adxRes.plusDI
+        computed[`${ind.id}_minus_di`] = adxRes.minusDI
+        computed[`${ind.id}_adx`] = adxRes.adx
+        computed[ind.id] = adxRes.adx
+        break
+      }
+      case 'WILLIAMS_R':
+        computed[ind.id] = computeWilliamsR(candles, ind.period ?? 14)
+        break
+      case 'OBV': {
+        // period doubles as the OBV moving-average length (default 20) —
+        // OBV's raw cumulative value only means something as a trend
+        // against that average.
+        const obvRes = computeObv(candles, ind.period ?? 20)
+        computed[`${ind.id}_ma`] = obvRes.ma
+        computed[ind.id] = obvRes.obv
+        break
+      }
+      case 'MFI':
+        computed[ind.id] = computeMfi(candles, ind.period ?? 14)
+        break
       default:
         break
     }
@@ -665,6 +688,18 @@ export function checkCondition(condition: Condition, computed: ComputedSeries, i
       return seriesA[i] != null && (seriesA[i] as number) > parseFloat(String(value))
     case 'below_value':
       return seriesA[i] != null && (seriesA[i] as number) < parseFloat(String(value))
+    case 'crosses_above_value': {
+      if (i === 0) return false
+      const v = parseFloat(String(value))
+      return seriesA[i - 1] != null && seriesA[i] != null &&
+        (seriesA[i - 1] as number) <= v && (seriesA[i] as number) > v
+    }
+    case 'crosses_below_value': {
+      if (i === 0) return false
+      const v = parseFloat(String(value))
+      return seriesA[i - 1] != null && seriesA[i] != null &&
+        (seriesA[i - 1] as number) >= v && (seriesA[i] as number) < v
+    }
     default:
       return false
   }

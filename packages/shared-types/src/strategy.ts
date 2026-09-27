@@ -8,7 +8,7 @@ export const IndicatorConfigSchema = z.object({
     'LIQUIDITY_SWEEP', 'FVG', 'ORDER_BLOCK', 'IMBALANCE', 'LIQUIDITY_VOID',
     'PREMIUM_DISCOUNT', 'BREAKOUT_RETEST', 'ORB', 'SR_PRICE_ACTION',
     'DONCHIAN', 'HULL_MA', 'SUPERTREND', 'KELTNER', 'STOCHASTIC',
-    'PARABOLIC_SAR', 'CCI', 'ICHIMOKU_TK',
+    'PARABOLIC_SAR', 'CCI', 'ICHIMOKU_TK', 'ADX', 'WILLIAMS_R', 'OBV', 'MFI',
   ]),
   period: z.number().int().positive().optional(),
   fast: z.number().int().positive().optional(),
@@ -32,7 +32,10 @@ export const IndicatorConfigSchema = z.object({
 export type IndicatorConfig = z.infer<typeof IndicatorConfigSchema>
 
 export const ConditionSchema = z.object({
-  type: z.enum(['crossover', 'crossunder', 'above', 'below', 'above_value', 'below_value']),
+  type: z.enum([
+    'crossover', 'crossunder', 'above', 'below', 'above_value', 'below_value',
+    'crosses_above_value', 'crosses_below_value',
+  ]),
   a: z.string(),
   b: z.string().optional(),
   value: z.union([z.number(), z.string()]).optional(),

@@ -219,6 +219,151 @@ export interface IchimokuTKResult {
   kijun: Series
 }
 
+// Wilder's recursive smoothing: a simple average over the first `period`
+// non-null values as the seed, then the standard (prev*(period-1)+new)/period
+// recursion — the exact convention `atr()` in indicators.ts already uses.
+// Assumes `data` has no internal gaps once it starts being non-null (true for
+// every series this is applied to below).
+function wilderSmoothSeries(data: Series, period: number): Series {
+  const n = data.length
+  const result: Series = new Array(n).fill(null)
+  const start = data.findIndex(v => v != null)
+  if (start === -1 || start + period > n) return result
+  let sum = 0
+  for (let k = 0; k < period; k++) sum += data[start + k] as number
+  const seedIdx = start + period - 1
+  result[seedIdx] = sum / period
+  for (let i = seedIdx + 1; i < n; i++) {
+    result[i] = ((result[i - 1] as number) * (period - 1) + (data[i] as number)) / period
+  }
+  return result
+}
+
+/** ADX / +DI / -DI (Wilder). +DI/-DI are plain series a strategy can feed
+ * directly into crossover/crossunder; ADX itself is a trend-STRENGTH
+ * filter (commonly gated via above_value, e.g. "ADX > 25") rather than a
+ * directional signal on its own. */
+export interface AdxResult {
+  plusDI: Series
+  minusDI: Series
+  adx: Series
+}
+
+export function computeAdx(candles: Candle[], period = 14): AdxResult {
+  const highs = candles.map(c => c.high)
+  const lows = candles.map(c => c.low)
+  const closes = candles.map(c => c.close)
+  const n = candles.length
+
+  const tr: Series = new Array(n).fill(null)
+  const plusDM: Series = new Array(n).fill(null)
+  const minusDM: Series = new Array(n).fill(null)
+  tr[0] = highs[0] - lows[0]
+  plusDM[0] = 0
+  minusDM[0] = 0
+  for (let i = 1; i < n; i++) {
+    tr[i] = Math.max(highs[i] - lows[i], Math.abs(highs[i] - closes[i - 1]), Math.abs(lows[i] - closes[i - 1]))
+    const upMove = highs[i] - highs[i - 1]
+    const downMove = lows[i - 1] - lows[i]
+    plusDM[i] = upMove > downMove && upMove > 0 ? upMove : 0
+    minusDM[i] = downMove > upMove && downMove > 0 ? downMove : 0
+  }
+
+  const smoothedTR = wilderSmoothSeries(tr, period)
+  const smoothedPlusDM = wilderSmoothSeries(plusDM, period)
+  const smoothedMinusDM = wilderSmoothSeries(minusDM, period)
+
+  const plusDI: Series = new Array(n).fill(null)
+  const minusDI: Series = new Array(n).fill(null)
+  const dx: Series = new Array(n).fill(null)
+  for (let i = 0; i < n; i++) {
+    const trVal = smoothedTR[i]
+    if (trVal == null || trVal === 0) continue
+    plusDI[i] = (100 * (smoothedPlusDM[i] as number)) / trVal
+    minusDI[i] = (100 * (smoothedMinusDM[i] as number)) / trVal
+    const sum = (plusDI[i] as number) + (minusDI[i] as number)
+    dx[i] = sum === 0 ? 0 : (100 * Math.abs((plusDI[i] as number) - (minusDI[i] as number))) / sum
+  }
+
+  const adx = wilderSmoothSeries(dx, period)
+  return { plusDI, minusDI, adx }
+}
+
+/** Williams %R: identical shape to Stochastic's raw %K, rebased to a
+ * -100..0 scale (%R = rawK - 100). Overbought > -20, oversold < -80. */
+export function computeWilliamsR(candles: Candle[], period = 14): Series {
+  const highs = candles.map(c => c.high)
+  const lows = candles.map(c => c.low)
+  const closes = candles.map(c => c.close)
+  const n = candles.length
+  const result: Series = new Array(n).fill(null)
+  for (let i = period - 1; i < n; i++) {
+    let hi = -Infinity
+    let lo = Infinity
+    for (let k = i - period + 1; k <= i; k++) {
+      if (highs[k] > hi) hi = highs[k]
+      if (lows[k] < lo) lo = lows[k]
+    }
+    result[i] = hi === lo ? -50 : ((closes[i] - hi) / (hi - lo)) * 100
+  }
+  return result
+}
+
+/** OBV (On-Balance Volume): a cumulative running total, so it's defined
+ * from bar 0 with no warmup. Exposed with its own SMA, since OBV's raw
+ * value only means something as a trend versus that average — a strategy
+ * reacts via crossover(obv, obv_ma), the same pattern as price vs. a
+ * moving average. */
+export interface ObvResult {
+  obv: Series
+  ma: Series
+}
+
+export function computeObv(candles: Candle[], maPeriod = 20): ObvResult {
+  const n = candles.length
+  const obv: Series = new Array(n).fill(null)
+  obv[0] = candles[0]?.volume ?? 0
+  for (let i = 1; i < n; i++) {
+    const prevObv = obv[i - 1] as number
+    if (candles[i].close > candles[i - 1].close) obv[i] = prevObv + (candles[i].volume ?? 0)
+    else if (candles[i].close < candles[i - 1].close) obv[i] = prevObv - (candles[i].volume ?? 0)
+    else obv[i] = prevObv
+  }
+  return { obv, ma: smaOfSeries(obv, maPeriod) }
+}
+
+/** MFI (Money Flow Index): RSI's formula applied to volume-weighted typical
+ * price instead of raw price — a rolling SUM of positive/negative money
+ * flow over `period` bars (not Wilder-smoothed, matching the standard MFI
+ * definition, unlike RSI's own smoothing). */
+export function computeMfi(candles: Candle[], period = 14): Series {
+  const n = candles.length
+  const tp = candles.map(c => (c.high + c.low + c.close) / 3)
+  const rawFlow = candles.map((c, i) => tp[i] * (c.volume ?? 0))
+  const positiveFlow: number[] = new Array(n).fill(0)
+  const negativeFlow: number[] = new Array(n).fill(0)
+  for (let i = 1; i < n; i++) {
+    if (tp[i] > tp[i - 1]) positiveFlow[i] = rawFlow[i]
+    else if (tp[i] < tp[i - 1]) negativeFlow[i] = rawFlow[i]
+  }
+
+  const result: Series = new Array(n).fill(null)
+  for (let i = period; i < n; i++) {
+    let posSum = 0
+    let negSum = 0
+    for (let k = i - period + 1; k <= i; k++) {
+      posSum += positiveFlow[k]
+      negSum += negativeFlow[k]
+    }
+    if (negSum === 0) result[i] = 100
+    else {
+      const ratio = posSum / negSum
+      result[i] = 100 - 100 / (1 + ratio)
+    }
+  }
+  return result
+}
+
 export function computeIchimokuTK(candles: Candle[], tenkanPeriod = 9, kijunPeriod = 26): IchimokuTKResult {
   const highs = candles.map(c => c.high)
   const lows = candles.map(c => c.low)

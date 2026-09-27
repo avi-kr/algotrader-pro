@@ -3,7 +3,7 @@ import type { Candle } from '@algotrader/shared-types'
 import { ema, atr } from '../src/indicators'
 import {
   computeSupertrend, computeKeltner, computeStochastic, computeParabolicSar,
-  computeCci, computeIchimokuTK,
+  computeCci, computeIchimokuTK, computeAdx, computeWilliamsR, computeObv, computeMfi,
 } from '../src/moreIndicators'
 
 const DAY = 86400
@@ -134,6 +134,85 @@ describe('computeSupertrend', () => {
       expect(result.value[i]).not.toBeNull()
       expect(result.value[i] as number).toBeLessThan(closes[i])
     }
+  })
+})
+
+describe('computeAdx', () => {
+  it('matches hand-computed +DI/-DI/ADX for a pure one-directional move', () => {
+    // h/l both rise by 2 each bar (h-l constant at 2), close at the
+    // midpoint. Hand-traced (period=2):
+    //   tr = [2, 3, 3, 3], plusDM = [0, 2, 2, 2], minusDM = [0, 0, 0, 0]
+    //   smoothedTR:      seed[1]=2.5, [2]=2.75,  [3]=2.875
+    //   smoothedPlusDM:  seed[1]=1,   [2]=1.5,   [3]=1.75
+    //   plusDI:  [1]=40, [2]=54.5454..., [3]=60.8695...
+    //   minusDI: 0 throughout (minusDM is always 0)
+    //   dx = 100*|plusDI-0|/(plusDI+0) = 100 whenever plusDI>0
+    //   adx seed[2]=avg(100,100)=100, adx[3]=100
+    const highs = [10, 12, 14, 16]
+    const lows = [8, 10, 12, 14]
+    const closes = [9, 11, 13, 15]
+    const candles: Candle[] = highs.map((h, i) => candle(i * DAY, closes[i], h, lows[i], closes[i]))
+
+    const result = computeAdx(candles, 2)
+    expect(result.plusDI[1]).toBeCloseTo(40, 6)
+    expect(result.plusDI[2]).toBeCloseTo(54.545455, 5)
+    expect(result.plusDI[3]).toBeCloseTo(60.869565, 5)
+    expect(result.minusDI[1]).toBeCloseTo(0, 6)
+    expect(result.minusDI[2]).toBeCloseTo(0, 6)
+    expect(result.minusDI[3]).toBeCloseTo(0, 6)
+    expect(result.adx[0]).toBeNull()
+    expect(result.adx[1]).toBeNull()
+    expect(result.adx[2]).toBeCloseTo(100, 6)
+    expect(result.adx[3]).toBeCloseTo(100, 6)
+  })
+})
+
+describe('computeWilliamsR', () => {
+  it('matches %K - 100 for the same fixture used in the Stochastic test', () => {
+    const candles: Candle[] = [
+      candle(0 * DAY, 9, 10, 8, 9),
+      candle(1 * DAY, 10, 11, 9, 10),
+      candle(2 * DAY, 11, 12, 10, 11),
+      candle(3 * DAY, 12, 13, 11, 12),
+    ]
+    // %K at i=2 and i=3 was 75 in the Stochastic test -> %R = 75-100 = -25.
+    const result = computeWilliamsR(candles, 3)
+    expect(result[1]).toBeNull()
+    expect(result[2]).toBeCloseTo(-25, 6)
+    expect(result[3]).toBeCloseTo(-25, 6)
+  })
+})
+
+describe('computeObv', () => {
+  it('matches a hand-computed running total on a fixed up/flat/down sequence', () => {
+    const closes = [10, 12, 12, 8]
+    const volumes = [100, 50, 30, 20]
+    const candles: Candle[] = closes.map((c, i) => candle(i * DAY, c, c, c, c, volumes[i]))
+    // obv[0]=100 (seed); up -> +50 -> 150; flat -> 150; down -> -20 -> 130
+    const result = computeObv(candles, 2)
+    expect(result.obv).toEqual([100, 150, 150, 130])
+    // SMA(2) of obv: ma[1]=avg(100,150)=125, ma[2]=avg(150,150)=150, ma[3]=avg(150,130)=140
+    expect(result.ma[0]).toBeNull()
+    expect(result.ma[1]).toBeCloseTo(125, 6)
+    expect(result.ma[2]).toBeCloseTo(150, 6)
+    expect(result.ma[3]).toBeCloseTo(140, 6)
+  })
+})
+
+describe('computeMfi', () => {
+  it('matches a hand-computed value on doji bars (high=low=close, so typicalPrice=close)', () => {
+    const closes = [10, 12, 11, 13]
+    const candles: Candle[] = closes.map((c, i) => candle(i * DAY, c, c, c, c, 100))
+    // rawFlow = tp*vol = [1000, 1200, 1100, 1300]
+    // i=1 up -> +flow=1200; i=2 down -> -flow=1100; i=3 up -> +flow=1300
+    // period=2, window[1,2]: posSum=1200, negSum=1100, ratio=1200/1100
+    //   MFI[2] = 100 - 100/(1+1200/1100) = 100 - 100/(2100/1100) = 52.173913...
+    // window[2,3]: posSum=1300, negSum=1100, ratio=1300/1100
+    //   MFI[3] = 100 - 100/(1+1300/1100) = 54.166667...
+    const result = computeMfi(candles, 2)
+    expect(result[1]).toBeNull()
+    expect(result[2]).toBeCloseTo(52.173913, 5)
+    expect(result[3]).toBeCloseTo(54.166667, 5)
   })
 })
 
