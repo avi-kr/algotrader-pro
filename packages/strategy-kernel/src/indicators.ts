@@ -1,4 +1,9 @@
 import type { Candle, IndicatorConfig, Condition } from '@algotrader/shared-types'
+import {
+  computeLiquiditySweep, computeFVG, computeOrderBlocks, computeImbalance,
+  computeLiquidityVoid, computePremiumDiscount, computeBreakoutRetest,
+  computeORB, computeSRPriceAction,
+} from './smc'
 
 export type Series = Array<number | null>
 
@@ -362,6 +367,79 @@ export function calculateIndicators(candles: Candle[], indicators: IndicatorConf
         computed[`${ind.id}_high_class`] = ms.highClass
         computed[`${ind.id}_low_class`] = ms.lowClass
         computed[`${ind.id}_bias`] = ms.bias
+        break
+      }
+      case 'LIQUIDITY_SWEEP': {
+        const sweep = computeLiquiditySweep(candles, ind.period ?? 2)
+        computed[`${ind.id}_bull`] = sweep.sweepBull
+        computed[`${ind.id}_bear`] = sweep.sweepBear
+        break
+      }
+      case 'FVG': {
+        const internalAtr = atr(highs, lows, closes, 14)
+        const fvg = computeFVG(candles, internalAtr, ind.atrMultiple ?? 0.25)
+        computed[`${ind.id}_bull_retest`] = fvg.bullRetest
+        computed[`${ind.id}_bear_retest`] = fvg.bearRetest
+        computed[`${ind.id}_bull_top`] = fvg.bullZoneTop
+        computed[`${ind.id}_bull_bottom`] = fvg.bullZoneBottom
+        computed[`${ind.id}_bear_top`] = fvg.bearZoneTop
+        computed[`${ind.id}_bear_bottom`] = fvg.bearZoneBottom
+        break
+      }
+      case 'ORDER_BLOCK': {
+        const ob = computeOrderBlocks(candles, ind.period ?? 2, ind.lookback ?? 10)
+        computed[`${ind.id}_bull_entry`] = ob.bullEntry
+        computed[`${ind.id}_bear_entry`] = ob.bearEntry
+        computed[`${ind.id}_bull_mitigated`] = ob.bullMitigated
+        computed[`${ind.id}_bear_mitigated`] = ob.bearMitigated
+        computed[`${ind.id}_breaker_bull_entry`] = ob.breakerBullEntry
+        computed[`${ind.id}_breaker_bear_entry`] = ob.breakerBearEntry
+        break
+      }
+      case 'IMBALANCE': {
+        const internalAtr = atr(highs, lows, closes, 14)
+        const imb = computeImbalance(candles, internalAtr, ind.atrMultiple ?? 1.5)
+        computed[`${ind.id}_bull`] = imb.bullImbalance
+        computed[`${ind.id}_bear`] = imb.bearImbalance
+        break
+      }
+      case 'LIQUIDITY_VOID': {
+        const void_ = computeLiquidityVoid(candles, ind.runLength ?? 3, ind.bodyRatio ?? 0.6)
+        computed[`${ind.id}_bull`] = void_.bullFormed
+        computed[`${ind.id}_bear`] = void_.bearFormed
+        computed[`${ind.id}_bull_top`] = void_.bullVoidTop
+        computed[`${ind.id}_bull_bottom`] = void_.bullVoidBottom
+        computed[`${ind.id}_bear_top`] = void_.bearVoidTop
+        computed[`${ind.id}_bear_bottom`] = void_.bearVoidBottom
+        break
+      }
+      case 'PREMIUM_DISCOUNT': {
+        const pd = computePremiumDiscount(candles, ind.period ?? 2, ind.zonePct ?? 0.05)
+        computed[`${ind.id}_zone`] = pd.zone
+        computed[`${ind.id}_equilibrium`] = pd.equilibrium
+        computed[`${ind.id}_range_top`] = pd.rangeTop
+        computed[`${ind.id}_range_bottom`] = pd.rangeBottom
+        break
+      }
+      case 'BREAKOUT_RETEST': {
+        const internalAtr = atr(highs, lows, closes, 14)
+        const br = computeBreakoutRetest(candles, internalAtr, ind.period ?? 2, ind.windowBars ?? 10, ind.atrMultiple ?? 0.25)
+        computed[`${ind.id}_bull`] = br.bullEntry
+        computed[`${ind.id}_bear`] = br.bearEntry
+        break
+      }
+      case 'ORB': {
+        const orb = computeORB(candles)
+        computed[`${ind.id}_bull`] = orb.bullEntry
+        computed[`${ind.id}_bear`] = orb.bearEntry
+        computed[`${ind.id}_range_high`] = orb.rangeHigh
+        computed[`${ind.id}_range_low`] = orb.rangeLow
+        break
+      }
+      case 'SR_PRICE_ACTION': {
+        const sr = computeSRPriceAction(candles, ind.period ?? 2, ind.bodyRatio ?? 2)
+        computed[`${ind.id}_bull`] = sr.bullEntry
+        computed[`${ind.id}_bear`] = sr.bearEntry
         break
       }
       default:

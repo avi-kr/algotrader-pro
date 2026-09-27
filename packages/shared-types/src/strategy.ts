@@ -3,13 +3,29 @@ import { AssetClassSchema } from './candle'
 
 export const IndicatorConfigSchema = z.object({
   id: z.string().min(1),
-  type: z.enum(['EMA', 'SMA', 'RSI', 'MACD', 'BB', 'ATR', 'VWAP', 'MARKET_STRUCTURE']),
+  type: z.enum([
+    'EMA', 'SMA', 'RSI', 'MACD', 'BB', 'ATR', 'VWAP', 'MARKET_STRUCTURE',
+    'LIQUIDITY_SWEEP', 'FVG', 'ORDER_BLOCK', 'IMBALANCE', 'LIQUIDITY_VOID',
+    'PREMIUM_DISCOUNT', 'BREAKOUT_RETEST', 'ORB', 'SR_PRICE_ACTION',
+  ]),
   period: z.number().int().positive().optional(),
   fast: z.number().int().positive().optional(),
   slow: z.number().int().positive().optional(),
   signal: z.number().int().positive().optional(),
   stdDev: z.number().positive().optional(),
   color: z.string().optional(),
+  // Generic numeric knobs for the structure/SMC indicator types above —
+  // each type documents its own meaning for these in strategy-kernel's
+  // indicators.ts/smc.ts, rather than overloading MACD's fast/slow/signal
+  // for unrelated concepts. `period` doubles as swingWidth for every type
+  // built on Market Structure, matching the existing MARKET_STRUCTURE
+  // convention.
+  lookback: z.number().int().positive().optional(),
+  atrMultiple: z.number().positive().optional(),
+  windowBars: z.number().int().positive().optional(),
+  runLength: z.number().int().positive().optional(),
+  bodyRatio: z.number().positive().optional(),
+  zonePct: z.number().positive().optional(),
 })
 export type IndicatorConfig = z.infer<typeof IndicatorConfigSchema>
 
