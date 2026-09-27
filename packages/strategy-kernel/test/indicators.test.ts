@@ -53,6 +53,25 @@ describe('calculateIndicators — raw price series', () => {
     expect(checkCondition({ type: 'above', a: 'close', b: 'sma2' }, computed, 3)).toBe(true)
     expect(checkCondition({ type: 'below', a: 'close', b: 'sma2' }, computed, 3)).toBe(false)
   })
+
+  it('crosses_above_value/crosses_below_value fire only on the bar the series actually crosses a constant threshold, not on every bar past it', () => {
+    // series: 5, 15, 25, 10 -- crosses above 20 at i=2, crosses below 20 at i=3
+    const computed = { level: [5, 15, 25, 10] }
+    expect(checkCondition({ type: 'crosses_above_value', a: 'level', value: 20 }, computed, 1)).toBe(false)
+    expect(checkCondition({ type: 'crosses_above_value', a: 'level', value: 20 }, computed, 2)).toBe(true)
+    // Once past the threshold, above_value stays true every subsequent bar
+    // (a state check) -- crosses_above_value must NOT re-fire on i=2 again
+    // or on a later bar that's merely still above 20.
+    expect(checkCondition({ type: 'above_value', a: 'level', value: 20 }, computed, 2)).toBe(true)
+    expect(checkCondition({ type: 'crosses_below_value', a: 'level', value: 20 }, computed, 3)).toBe(true)
+    expect(checkCondition({ type: 'crosses_above_value', a: 'level', value: 20 }, computed, 3)).toBe(false)
+  })
+
+  it('crosses_above_value/crosses_below_value are false on the very first bar (no prior value to compare)', () => {
+    const computed = { level: [25] }
+    expect(checkCondition({ type: 'crosses_above_value', a: 'level', value: 20 }, computed, 0)).toBe(false)
+    expect(checkCondition({ type: 'crosses_below_value', a: 'level', value: 20 }, computed, 0)).toBe(false)
+  })
 })
 
 describe('crossover / crossunder', () => {

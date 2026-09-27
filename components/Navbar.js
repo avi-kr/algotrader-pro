@@ -2,13 +2,14 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { BarChart2, Home, Layers, FlaskConical, Menu, X, Zap } from 'lucide-react'
+import { BarChart2, Home, Layers, FlaskConical, Menu, X, Zap, Database } from 'lucide-react'
 
 const navItems = [
   { href: '/', label: 'Dashboard', icon: Home },
   { href: '/charts', label: 'Charts', icon: BarChart2 },
   { href: '/strategies', label: 'Strategies', icon: Layers },
   { href: '/backtest', label: 'Backtest', icon: FlaskConical },
+  { href: '/data-import', label: 'Data Import', icon: Database },
 ]
 
 export default function Navbar() {
